@@ -26,6 +26,31 @@ export interface Employee {
 export type EmployeeInsert = Omit<Employee, "id" | "auth_uid" | "created_at" | "updated_at">;
 export type EmployeeUpdate = Partial<EmployeeInsert>;
 
+export type WorkListType = "daily" | "weekly" | "monthly" | "instruction";
+export type WorkStatusValue = "미진행" | "진행중" | "완료" | "보류";
+
+export interface WorkStatusTask {
+  id: string;
+  employee_id: string;
+  list_type: WorkListType;
+  title: string;
+  detail: string | null;
+  status: WorkStatusValue;
+  due_date: string | null;
+  sort_order: number;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type WorkStatusTaskInsert = Omit<
+  WorkStatusTask,
+  "id" | "created_at" | "updated_at"
+>;
+export type WorkStatusTaskUpdate = Partial<
+  Omit<WorkStatusTask, "id" | "employee_id" | "created_at" | "updated_at">
+>;
+
 export type CustomerType = "개인" | "개인사업자" | "법인";
 
 export type VendorTaxCategory =
