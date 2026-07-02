@@ -43,32 +43,6 @@ const menuSections: MenuSection[] = [
     ],
   },
   {
-    title: "영업",
-    items: [
-      {
-        label: "고객관리",
-        href: "/dashboard/customers",
-        icon: (
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 7a2 2 0 0 1 2-2h8v14H5a2 2 0 0 1-2-2Z" />
-            <path d="M13 5h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6" />
-            <path d="M8 10h1" />
-            <path d="M8 14h1" />
-          </svg>
-        ),
-      },
-      {
-        label: "프로젝트관리",
-        href: "/dashboard/projects",
-        icon: (
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-          </svg>
-        ),
-      },
-    ],
-  },
-  {
     title: "할일",
     items: [
       {
@@ -145,19 +119,6 @@ const menuSections: MenuSection[] = [
   {
     title: "재무",
     items: [
-      {
-        label: "견적관리",
-        href: "/dashboard/quotations",
-        icon: (
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <polyline points="14 2 14 8 20 8" />
-            <line x1="16" x2="8" y1="13" y2="13" />
-            <line x1="16" x2="8" y1="17" y2="17" />
-            <line x1="10" x2="8" y1="9" y2="9" />
-          </svg>
-        ),
-      },
       {
         label: "매출관리",
         href: "/dashboard/revenues",
