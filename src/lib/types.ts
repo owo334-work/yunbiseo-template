@@ -26,7 +26,7 @@ export interface Employee {
 export type EmployeeInsert = Omit<Employee, "id" | "auth_uid" | "created_at" | "updated_at">;
 export type EmployeeUpdate = Partial<EmployeeInsert>;
 
-export type WorkListType = "daily" | "weekly" | "monthly" | "instruction";
+export type WorkListType = "daily" | "weekly" | "monthly" | "deadline" | "instruction";
 export type WorkStatusValue = "미진행" | "진행중" | "완료" | "보류";
 
 export interface WorkStatusTask {
@@ -36,12 +36,32 @@ export interface WorkStatusTask {
   title: string;
   detail: string | null;
   status: WorkStatusValue;
+  progress: number; // 0~100 (진척도)
   due_date: string | null;
   sort_order: number;
   created_by: string | null;
   created_at: string;
   updated_at: string;
 }
+
+// 공유 정보란 (전 직원=company / 팀=부서 team)
+export type SharedNoteScope = "company" | "team";
+
+export interface SharedNote {
+  id: string;
+  scope: SharedNoteScope;
+  team_key: string | null;
+  content: string;
+  author_employee_id: string | null;
+  created_at: string;
+  updated_at: string;
+  author?: { id: string; name: string } | null;
+}
+
+export type SharedNoteInsert = Pick<
+  SharedNote,
+  "scope" | "team_key" | "content" | "author_employee_id"
+>;
 
 export type WorkStatusTaskInsert = Omit<
   WorkStatusTask,

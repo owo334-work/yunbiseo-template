@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { ClipboardList, ListChecks, Users } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { CalendarDays, ChevronLeft, ChevronRight, ClipboardList, ListChecks, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
@@ -14,10 +15,13 @@ import {
   StatCard,
   StatsGrid,
 } from "@/components/page-shell";
-import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { CalendarMonthView } from "@/components/calendar/calendar-month-view";
+import { addMonths, subMonths, startOfMonth, format } from "@/components/calendar/calendar-utils";
 import { createClient } from "@/lib/supabase/client";
-import type { Employee, WorkListType, WorkStatusTask, WorkStatusValue } from "@/lib/types";
+import type { Employee, Schedule, WorkListType, WorkStatusTask, WorkStatusValue } from "@/lib/types";
 import { WORK_LIST_TYPES, WORK_STATUS_STYLES } from "@/lib/work-status";
 
 // 카드 미리보기에서 보여줄 업무 우선순위 (진행중 → 미진행 → 보류 → 완료)
@@ -46,9 +50,12 @@ type EmployeeWithTasks = Employee & {
 
 export default function WorkspacePage() {
   const supabase = useMemo(() => createClient(), []);
+  const router = useRouter();
 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [tasks, setTasks] = useState<WorkStatusTask[]>([]);
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [calMonth, setCalMonth] = useState<Date>(() => startOfMonth(new Date()));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [tableMissing, setTableMissing] = useState(false);
@@ -59,9 +66,10 @@ export default function WorkspacePage() {
     setError(false);
     setTableMissing(false);
 
-    const [employeeRes, taskRes] = await Promise.all([
+    const [employeeRes, taskRes, scheduleRes] = await Promise.all([
       supabase.from("employees").select("*").order("name", { ascending: true }).limit(1000),
       supabase.from("work_status_tasks").select("*").limit(5000),
+      supabase.from("schedules").select("*").limit(5000),
     ]);
 
     if (employeeRes.error) {
@@ -72,6 +80,7 @@ export default function WorkspacePage() {
     }
 
     setEmployees((employeeRes.data ?? []).filter((e) => e.is_active !== false));
+    setSchedules(scheduleRes.error ? [] : ((scheduleRes.data ?? []) as Schedule[]));
 
     if (taskRes.error) {
       // 마이그레이션(work_status_tasks)이 아직 적용되지 않은 경우
@@ -140,6 +149,57 @@ export default function WorkspacePage() {
           마이그레이션을 적용해 주세요.
         </div>
       ) : null}
+
+      {/* 전 직원 일정 통합 캘린더 (개인 페이지에서 등록한 일정이 여기에 모입니다) */}
+      <Card className="border-border/70 bg-card/85">
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <CalendarDays className="h-4 w-4 text-primary" />
+              전 직원 일정
+            </CardTitle>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => setCalMonth((c) => subMonths(c, 1))}
+                aria-label="이전 달"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setCalMonth(startOfMonth(new Date()))}
+              >
+                오늘
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => setCalMonth((c) => addMonths(c, 1))}
+                aria-label="다음 달"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+              <span className="ml-2 text-sm font-semibold text-foreground">
+                {format(calMonth, "yyyy년 M월")}
+              </span>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <CalendarMonthView
+            currentDate={calMonth}
+            schedules={schedules}
+            onDateClick={() => router.push("/dashboard/schedules")}
+            onEventClick={() => router.push("/dashboard/schedules")}
+          />
+        </CardContent>
+      </Card>
 
       <PageToolbar>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
