@@ -12,19 +12,21 @@ import {
 
 export type Widget = { id: string; node: ReactNode };
 
-// 위젯별 크기: w=가로 칸 수(1~cols), h=세로 픽셀(없으면 내용 높이 자동)
+// 위젯별 크기: w=가로 칸 수(12칸 기준, MIN_SPAN~12), h=세로 픽셀(없으면 내용 높이 자동)
 type WidgetSize = { w: number; h?: number };
 type SizeMap = Record<string, WidgetSize>;
 
 const GRID_GAP = 16; // gap-4
 const MIN_HEIGHT = 140;
+const TOTAL_COLS = 12; // 12칸 그리드 (가로 조절을 촘촘하게)
+const MIN_SPAN = 3; // 최소 가로 (12칸 중 3 = 1/4)
 
-// 컨테이너 폭 → 칼럼 수 (사이드 패널로 폭이 줄면 자동으로 칼럼도 줄어든다)
-function colsForWidth(width: number): number {
-  if (width >= 1600) return 4;
-  if (width >= 1100) return 3;
-  if (width >= 700) return 2;
-  return 1;
+// 컨테이너 폭 → 기본 가로 칸 수(12칸 기준). 폭이 줄면 카드가 알아서 넓어진다.
+function defaultSpan(width: number): number {
+  if (width >= 1600) return 3; // 4개/줄
+  if (width >= 1100) return 4; // 3개/줄
+  if (width >= 700) return 6; // 2개/줄
+  return 12; // 1개/줄
 }
 
 // 저장된 순서와 현재 위젯 목록을 정합화한다.
@@ -35,7 +37,7 @@ function reconcile(saved: string[], widgets: Widget[]): string[] {
   return [...kept, ...added];
 }
 
-// 폰 위젯처럼 카드를 드래그해 순서를 바꾸고, 모서리를 끌어 크기를 조절한다.
+// 폰 위젯처럼 카드를 드래그해 순서를 바꾸고, 모서리를 끌어 가로·세로 크기를 조절한다.
 // 배치(순서/크기)는 브라우저(localStorage)에 저장된다.
 export function WidgetGrid({
   storageKey,
@@ -54,7 +56,7 @@ export function WidgetGrid({
   const [hydrated, setHydrated] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const [cols, setCols] = useState(3);
+  const [width, setWidth] = useState(1200);
 
   // 리사이즈 진행 상태 (드래그 중인 위젯의 임시 크기)
   const resizeRef = useRef<{
@@ -63,7 +65,7 @@ export function WidgetGrid({
     startY: number;
     startW: number;
     startH: number;
-    colWidth: number;
+    unit: number; // 1칸 폭(px) + gap
   } | null>(null);
   const [resizing, setResizing] = useState<{ id: string; w: number; h: number } | null>(null);
 
@@ -98,11 +100,11 @@ export function WidgetGrid({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [widgets.map((w) => w.id).join("|"), hydrated]);
 
-  // 컨테이너 폭 관찰 → 칼럼 수 갱신
+  // 컨테이너 폭 관찰
   useLayoutEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const update = () => setCols(colsForWidth(el.clientWidth));
+    const update = () => setWidth(el.clientWidth);
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
@@ -161,22 +163,29 @@ export function WidgetGrid({
     setSizes({});
   };
 
+  // 현재 폭에서의 위젯 span (저장값 없으면 기본값)
+  const spanOf = (id: string) => {
+    const live = resizing && resizing.id === id ? resizing.w : undefined;
+    const saved = sizes[id]?.w;
+    const base = live ?? saved ?? defaultSpan(width);
+    return Math.min(TOTAL_COLS, Math.max(MIN_SPAN, base));
+  };
+
   // ── 리사이즈 (오른쪽 아래 모서리 드래그) ─────────────────────────
   const startResize = (e: React.PointerEvent, id: string, el: HTMLElement) => {
     e.preventDefault();
     e.stopPropagation();
-    const gapTotal = GRID_GAP * (cols - 1);
-    const colWidth = (el.parentElement!.clientWidth - gapTotal) / cols;
-    const size = sizes[id] ?? {};
+    const gridWidth = el.parentElement!.clientWidth;
+    const colWidth = (gridWidth - GRID_GAP * (TOTAL_COLS - 1)) / TOTAL_COLS;
     resizeRef.current = {
       id,
       startX: e.clientX,
       startY: e.clientY,
-      startW: Math.min(size.w ?? 1, cols),
-      startH: size.h ?? el.offsetHeight,
-      colWidth,
+      startW: spanOf(id),
+      startH: sizes[id]?.h ?? el.offsetHeight,
+      unit: colWidth + GRID_GAP,
     };
-    setResizing({ id, w: Math.min(size.w ?? 1, cols), h: size.h ?? el.offsetHeight });
+    setResizing({ id, w: spanOf(id), h: sizes[id]?.h ?? el.offsetHeight });
     e.currentTarget.setPointerCapture(e.pointerId);
   };
 
@@ -185,9 +194,8 @@ export function WidgetGrid({
     if (!r) return;
     const dx = e.clientX - r.startX;
     const dy = e.clientY - r.startY;
-    const step = r.colWidth + GRID_GAP;
-    const spanDelta = Math.round(dx / step);
-    const newW = Math.min(cols, Math.max(1, r.startW + spanDelta));
+    const spanDelta = Math.round(dx / r.unit);
+    const newW = Math.min(TOTAL_COLS, Math.max(MIN_SPAN, r.startW + spanDelta));
     const newH = Math.max(MIN_HEIGHT, Math.round(r.startH + dy));
     setResizing({ id: r.id, w: newW, h: newH });
   };
@@ -217,8 +225,8 @@ export function WidgetGrid({
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">
           <GripVertical className="inline h-3 w-3" /> 손잡이로 이동,{" "}
-          <Maximize2 className="inline h-3 w-3" /> 오른쪽 아래 모서리를 끌어 크기 조절. 배치는 이
-          브라우저에 저장됩니다.
+          <Maximize2 className="inline h-3 w-3" /> 오른쪽 아래 모서리를 좌우/상하로 끌어 가로·세로
+          크기 조절. 배치는 이 브라우저에 저장됩니다.
         </p>
         <button
           type="button"
@@ -233,13 +241,12 @@ export function WidgetGrid({
       <div
         ref={containerRef}
         className="grid items-start gap-4"
-        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+        style={{ gridTemplateColumns: `repeat(${TOTAL_COLS}, minmax(0, 1fr))` }}
       >
         {ordered.map((w) => {
           const live = resizing && resizing.id === w.id ? resizing : null;
-          const size = sizes[w.id] ?? {};
-          const span = Math.min(live?.w ?? size.w ?? 1, cols);
-          const height = live?.h ?? size.h;
+          const span = spanOf(w.id);
+          const height = live?.h ?? sizes[w.id]?.h;
           return (
             <div
               key={w.id}
@@ -279,12 +286,21 @@ export function WidgetGrid({
               {/* 내용 (높이 지정 시 내부 스크롤) */}
               <div className={height ? "h-full overflow-auto" : ""}>{w.node}</div>
 
+              {/* 리사이즈 중 크기 표시 */}
+              {live ? (
+                <span className="pointer-events-none absolute bottom-1 right-6 z-10 rounded bg-primary/90 px-1.5 py-0.5 text-[10px] font-medium text-primary-foreground">
+                  가로 {live.w}/12
+                </span>
+              ) : null}
+
               {/* 리사이즈 손잡이 (오른쪽 아래 모서리) */}
               <span
                 role="slider"
                 aria-label="위젯 크기 조절"
                 tabIndex={-1}
-                onPointerDown={(e) => startResize(e, w.id, e.currentTarget.parentElement as HTMLElement)}
+                onPointerDown={(e) =>
+                  startResize(e, w.id, e.currentTarget.parentElement as HTMLElement)
+                }
                 onPointerMove={moveResize}
                 onPointerUp={endResize}
                 className="absolute bottom-0 right-0 z-10 flex h-5 w-5 cursor-nwse-resize items-end justify-end p-0.5 text-muted-foreground/50 opacity-0 transition-opacity hover:text-foreground group-hover/widget:opacity-100"
