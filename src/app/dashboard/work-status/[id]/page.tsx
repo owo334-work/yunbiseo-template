@@ -67,6 +67,25 @@ export default function WorkStatusDetailPage() {
   const [dlTitle, setDlTitle] = useState("");
   const [dlDue, setDlDue] = useState("");
 
+  // 요청사항 배정 패널 위치 (왼쪽/오른쪽) — 브라우저에 저장
+  const [assignSide, setAssignSide] = useState<"left" | "right">("left");
+  useEffect(() => {
+    try {
+      const s = localStorage.getItem("ws-assign-side");
+      if (s === "left" || s === "right") setAssignSide(s);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  const changeSide = (s: "left" | "right") => {
+    setAssignSide(s);
+    try {
+      localStorage.setItem("ws-assign-side", s);
+    } catch {
+      /* ignore */
+    }
+  };
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(false);
@@ -581,18 +600,71 @@ export default function WorkStatusDetailPage() {
         }
       />
 
-      {/* 내 대시보드에서 요청사항 배정 (대리 이상 또는 관리자) */}
-      {isOwner && canAssignRequests ? (
-        <RequestAssignPanel
-          employees={allEmployees.map((e) => ({ id: e.id, name: e.name, department: e.department }))}
-          currentDepartment={me.department}
-          minPosition={minPosition}
-          authUid={me.authUid}
-          onAssigned={() => void fetchData()}
-        />
-      ) : null}
+      {/* 내 대시보드에서 요청사항 배정 (대리 이상 또는 관리자) — 좌/우 사이드 칼럼 */}
+      <div className="flex flex-col gap-4 lg:flex-row">
+        {isOwner && canAssignRequests && assignSide === "left" ? (
+          <RequestAsideColumn side={assignSide} onChangeSide={changeSide}>
+            <RequestAssignPanel
+              employees={allEmployees.map((e) => ({ id: e.id, name: e.name, department: e.department }))}
+              currentDepartment={me.department}
+              minPosition={minPosition}
+              authUid={me.authUid}
+              onAssigned={() => void fetchData()}
+            />
+          </RequestAsideColumn>
+        ) : null}
 
-      <WidgetGrid storageKey={`ws-widget-order:${employeeId}`} widgets={widgets} />
+        <div className="min-w-0 flex-1">
+          <WidgetGrid storageKey={`ws-widget-order:${employeeId}`} widgets={widgets} />
+        </div>
+
+        {isOwner && canAssignRequests && assignSide === "right" ? (
+          <RequestAsideColumn side={assignSide} onChangeSide={changeSide}>
+            <RequestAssignPanel
+              employees={allEmployees.map((e) => ({ id: e.id, name: e.name, department: e.department }))}
+              currentDepartment={me.department}
+              minPosition={minPosition}
+              authUid={me.authUid}
+              onAssigned={() => void fetchData()}
+            />
+          </RequestAsideColumn>
+        ) : null}
+      </div>
     </PageShell>
+  );
+}
+
+// 요청사항 배정 사이드 칼럼 (좌/우 위치 토글 포함)
+function RequestAsideColumn({
+  side,
+  onChangeSide,
+  children,
+}: {
+  side: "left" | "right";
+  onChangeSide: (s: "left" | "right") => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <aside className="w-full lg:w-[340px] lg:shrink-0">
+      <div className="mb-2 flex items-center gap-1 text-xs">
+        <span className="mr-auto text-muted-foreground">배정 패널 위치</span>
+        {(["left", "right"] as const).map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => onChangeSide(s)}
+            aria-pressed={side === s}
+            className={`rounded-md px-2 py-1 transition-colors ${
+              side === s
+                ? "bg-primary/10 font-medium text-primary"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            {s === "left" ? "왼쪽" : "오른쪽"}
+          </button>
+        ))}
+      </div>
+      {children}
+    </aside>
   );
 }

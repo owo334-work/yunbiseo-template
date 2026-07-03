@@ -1,13 +1,33 @@
 "use client";
 
-import { GripVertical, RotateCcw } from "lucide-react";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { GripVertical, Maximize2, RotateCcw } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 export type Widget = { id: string; node: ReactNode };
 
+// 위젯별 크기: w=가로 칸 수(1~cols), h=세로 픽셀(없으면 내용 높이 자동)
+type WidgetSize = { w: number; h?: number };
+type SizeMap = Record<string, WidgetSize>;
+
+const GRID_GAP = 16; // gap-4
+const MIN_HEIGHT = 140;
+
+// 컨테이너 폭 → 칼럼 수 (사이드 패널로 폭이 줄면 자동으로 칼럼도 줄어든다)
+function colsForWidth(width: number): number {
+  if (width >= 1600) return 4;
+  if (width >= 1100) return 3;
+  if (width >= 700) return 2;
+  return 1;
+}
+
 // 저장된 순서와 현재 위젯 목록을 정합화한다.
-// - 저장된 순서 중 실제 존재하는 것만 유지
-// - 저장에 없는 새 위젯은 뒤에 붙임
 function reconcile(saved: string[], widgets: Widget[]): string[] {
   const ids = widgets.map((w) => w.id);
   const kept = saved.filter((id) => ids.includes(id));
@@ -15,7 +35,8 @@ function reconcile(saved: string[], widgets: Widget[]): string[] {
   return [...kept, ...added];
 }
 
-// 폰 위젯처럼 카드를 드래그해 순서를 바꾸고, 배치를 브라우저(localStorage)에 저장한다.
+// 폰 위젯처럼 카드를 드래그해 순서를 바꾸고, 모서리를 끌어 크기를 조절한다.
+// 배치(순서/크기)는 브라우저(localStorage)에 저장된다.
 export function WidgetGrid({
   storageKey,
   widgets,
@@ -23,23 +44,45 @@ export function WidgetGrid({
   storageKey: string;
   widgets: Widget[];
 }) {
+  const orderKey = `${storageKey}:order`;
+  const sizeKey = `${storageKey}:size`;
+
   const [order, setOrder] = useState<string[]>(() => widgets.map((w) => w.id));
+  const [sizes, setSizes] = useState<SizeMap>({});
   const [dragId, setDragId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
 
-  // 최초 1회: 저장된 순서 불러오기
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [cols, setCols] = useState(3);
+
+  // 리사이즈 진행 상태 (드래그 중인 위젯의 임시 크기)
+  const resizeRef = useRef<{
+    id: string;
+    startX: number;
+    startY: number;
+    startW: number;
+    startH: number;
+    colWidth: number;
+  } | null>(null);
+  const [resizing, setResizing] = useState<{ id: string; w: number; h: number } | null>(null);
+
+  // 최초 1회: 저장된 순서/크기 불러오기
   useEffect(() => {
-    let saved: string[] = [];
+    let savedOrder: string[] = [];
+    let savedSizes: SizeMap = {};
     try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw) saved = JSON.parse(raw) as string[];
+      const rawOrder = localStorage.getItem(orderKey);
+      if (rawOrder) savedOrder = JSON.parse(rawOrder) as string[];
+      const rawSize = localStorage.getItem(sizeKey);
+      if (rawSize) savedSizes = JSON.parse(rawSize) as SizeMap;
     } catch {
-      saved = [];
+      savedOrder = [];
+      savedSizes = {};
     }
-    setOrder(reconcile(saved, widgets));
+    setOrder(reconcile(savedOrder, widgets));
+    setSizes(savedSizes);
     setHydrated(true);
-    // storageKey 만 의존 (위젯 목록 변동은 아래 effect 에서 반영)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageKey]);
 
@@ -55,16 +98,39 @@ export function WidgetGrid({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [widgets.map((w) => w.id).join("|"), hydrated]);
 
-  const persist = useCallback(
+  // 컨테이너 폭 관찰 → 칼럼 수 갱신
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () => setCols(colsForWidth(el.clientWidth));
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const persistOrder = useCallback(
     (next: string[]) => {
       setOrder(next);
       try {
-        localStorage.setItem(storageKey, JSON.stringify(next));
+        localStorage.setItem(orderKey, JSON.stringify(next));
       } catch {
-        // 저장 실패는 조용히 무시 (배치는 세션 동안 유지됨)
+        /* 저장 실패는 조용히 무시 */
       }
     },
-    [storageKey],
+    [orderKey],
+  );
+
+  const persistSizes = useCallback(
+    (next: SizeMap) => {
+      setSizes(next);
+      try {
+        localStorage.setItem(sizeKey, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+    },
+    [sizeKey],
   );
 
   const handleDrop = (targetId: string) => {
@@ -79,18 +145,68 @@ export function WidgetGrid({
     if (from === -1 || to === -1) return;
     next.splice(from, 1);
     next.splice(to, 0, dragId);
-    persist(next);
+    persistOrder(next);
     setDragId(null);
     setOverId(null);
   };
 
   const resetLayout = () => {
     try {
-      localStorage.removeItem(storageKey);
+      localStorage.removeItem(orderKey);
+      localStorage.removeItem(sizeKey);
     } catch {
-      // ignore
+      /* ignore */
     }
     setOrder(widgets.map((w) => w.id));
+    setSizes({});
+  };
+
+  // ── 리사이즈 (오른쪽 아래 모서리 드래그) ─────────────────────────
+  const startResize = (e: React.PointerEvent, id: string, el: HTMLElement) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const gapTotal = GRID_GAP * (cols - 1);
+    const colWidth = (el.parentElement!.clientWidth - gapTotal) / cols;
+    const size = sizes[id] ?? {};
+    resizeRef.current = {
+      id,
+      startX: e.clientX,
+      startY: e.clientY,
+      startW: Math.min(size.w ?? 1, cols),
+      startH: size.h ?? el.offsetHeight,
+      colWidth,
+    };
+    setResizing({ id, w: Math.min(size.w ?? 1, cols), h: size.h ?? el.offsetHeight });
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const moveResize = (e: React.PointerEvent) => {
+    const r = resizeRef.current;
+    if (!r) return;
+    const dx = e.clientX - r.startX;
+    const dy = e.clientY - r.startY;
+    const step = r.colWidth + GRID_GAP;
+    const spanDelta = Math.round(dx / step);
+    const newW = Math.min(cols, Math.max(1, r.startW + spanDelta));
+    const newH = Math.max(MIN_HEIGHT, Math.round(r.startH + dy));
+    setResizing({ id: r.id, w: newW, h: newH });
+  };
+
+  const endResize = (e: React.PointerEvent) => {
+    const r = resizeRef.current;
+    if (!r || !resizing) {
+      resizeRef.current = null;
+      setResizing(null);
+      return;
+    }
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    persistSizes({ ...sizes, [r.id]: { w: resizing.w, h: resizing.h } });
+    resizeRef.current = null;
+    setResizing(null);
   };
 
   const byId = new Map(widgets.map((w) => [w.id, w] as const));
@@ -98,54 +214,86 @@ export function WidgetGrid({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">
-          카드 왼쪽 위 <GripVertical className="inline h-3 w-3" /> 손잡이를 잡아 원하는 곳으로
-          끌어다 배치하세요. 배치는 이 브라우저에 저장됩니다.
+          <GripVertical className="inline h-3 w-3" /> 손잡이로 이동,{" "}
+          <Maximize2 className="inline h-3 w-3" /> 오른쪽 아래 모서리를 끌어 크기 조절. 배치는 이
+          브라우저에 저장됩니다.
         </p>
         <button
           type="button"
           onClick={resetLayout}
-          className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <RotateCcw className="h-3 w-3" />
           배치 초기화
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {ordered.map((w) => (
-          <div
-            key={w.id}
-            onDragOver={(e) => {
-              if (!dragId) return;
-              e.preventDefault();
-              if (overId !== w.id) setOverId(w.id);
-            }}
-            onDrop={() => handleDrop(w.id)}
-            className={`group/widget relative rounded-xl transition-all ${
-              overId === w.id && dragId !== w.id
-                ? "ring-2 ring-primary/50 ring-offset-2 ring-offset-background"
-                : ""
-            } ${dragId === w.id ? "opacity-40" : ""}`}
-          >
-            {/* 드래그 손잡이 */}
-            <button
-              type="button"
-              draggable
-              onDragStart={() => setDragId(w.id)}
-              onDragEnd={() => {
-                setDragId(null);
-                setOverId(null);
+      <div
+        ref={containerRef}
+        className="grid items-start gap-4"
+        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+      >
+        {ordered.map((w) => {
+          const live = resizing && resizing.id === w.id ? resizing : null;
+          const size = sizes[w.id] ?? {};
+          const span = Math.min(live?.w ?? size.w ?? 1, cols);
+          const height = live?.h ?? size.h;
+          return (
+            <div
+              key={w.id}
+              onDragOver={(e) => {
+                if (!dragId) return;
+                e.preventDefault();
+                if (overId !== w.id) setOverId(w.id);
               }}
-              aria-label="위젯 이동"
-              className="absolute left-1 top-1 z-10 cursor-grab rounded-md p-1 text-muted-foreground/60 opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover/widget:opacity-100 active:cursor-grabbing"
+              onDrop={() => handleDrop(w.id)}
+              style={{
+                gridColumn: `span ${span} / span ${span}`,
+                height: height ? `${height}px` : undefined,
+              }}
+              className={`group/widget relative min-w-0 overflow-hidden rounded-xl transition-shadow ${
+                overId === w.id && dragId !== w.id
+                  ? "ring-2 ring-primary/50 ring-offset-2 ring-offset-background"
+                  : ""
+              } ${dragId === w.id ? "opacity-40" : ""} ${
+                live ? "ring-2 ring-primary/60" : ""
+              }`}
             >
-              <GripVertical className="h-4 w-4" />
-            </button>
-            {w.node}
-          </div>
-        ))}
+              {/* 이동 손잡이 */}
+              <button
+                type="button"
+                draggable
+                onDragStart={() => setDragId(w.id)}
+                onDragEnd={() => {
+                  setDragId(null);
+                  setOverId(null);
+                }}
+                aria-label="위젯 이동"
+                className="absolute left-1 top-1 z-10 cursor-grab rounded-md p-1 text-muted-foreground/60 opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover/widget:opacity-100 active:cursor-grabbing"
+              >
+                <GripVertical className="h-4 w-4" />
+              </button>
+
+              {/* 내용 (높이 지정 시 내부 스크롤) */}
+              <div className={height ? "h-full overflow-auto" : ""}>{w.node}</div>
+
+              {/* 리사이즈 손잡이 (오른쪽 아래 모서리) */}
+              <span
+                role="slider"
+                aria-label="위젯 크기 조절"
+                tabIndex={-1}
+                onPointerDown={(e) => startResize(e, w.id, e.currentTarget.parentElement as HTMLElement)}
+                onPointerMove={moveResize}
+                onPointerUp={endResize}
+                className="absolute bottom-0 right-0 z-10 flex h-5 w-5 cursor-nwse-resize items-end justify-end p-0.5 text-muted-foreground/50 opacity-0 transition-opacity hover:text-foreground group-hover/widget:opacity-100"
+              >
+                <Maximize2 className="h-3 w-3 rotate-90" />
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

@@ -19,7 +19,9 @@ export default function DashboardLayout({
   const isFullWidth =
     (pathname?.startsWith("/dashboard/workspace") ?? false) ||
     (pathname?.startsWith("/dashboard/office") ?? false);
-  const isWideContent = pathname?.startsWith("/dashboard/schedules") ?? false;
+  const isWideContent =
+    (pathname?.startsWith("/dashboard/schedules") ?? false) ||
+    (pathname?.startsWith("/dashboard/work-status") ?? false);
 
   return (
     <MaskingProvider>
