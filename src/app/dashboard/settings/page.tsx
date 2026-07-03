@@ -31,7 +31,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { ApiKey, ExpenseType, ProjectType, ScheduleCategoryItem } from "@/lib/types";
+import {
+  DEFAULT_REQUEST_MIN_POSITION,
+  POSITION_RANKS,
+  REQUEST_MIN_POSITION_KEY,
+} from "@/lib/work-status";
 
 import { Badge } from "@/components/ui/badge";
 
@@ -317,6 +329,10 @@ export default function SettingsPage() {
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
 
+  // 요청사항 배정 기준 직책
+  const [requestMinPosition, setRequestMinPosition] = useState<string>(DEFAULT_REQUEST_MIN_POSITION);
+  const [requestMinSaving, setRequestMinSaving] = useState(false);
+
 
   const fetchApiKeys = useCallback(async () => {
     setLoading(true);
@@ -371,6 +387,36 @@ export default function SettingsPage() {
     setScheduleCategories((data ?? []) as ScheduleCategoryItem[]);
     setSchCatLoading(false);
   }, [supabase]);
+
+  const fetchRequestMinPosition = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("system_settings")
+      .select("value")
+      .eq("key", REQUEST_MIN_POSITION_KEY)
+      .maybeSingle();
+    if (error) {
+      console.error("요청사항 기준 직책 조회 실패:", error.message);
+      return;
+    }
+    setRequestMinPosition(data?.value || DEFAULT_REQUEST_MIN_POSITION);
+  }, [supabase]);
+
+  const handleSaveRequestMinPosition = async (value: string) => {
+    setRequestMinSaving(true);
+    const prev = requestMinPosition;
+    setRequestMinPosition(value);
+    const { error } = await supabase
+      .from("system_settings")
+      .upsert({ key: REQUEST_MIN_POSITION_KEY, value, updated_at: new Date().toISOString() });
+    if (error) {
+      console.error("요청사항 기준 직책 저장 실패:", error.message);
+      toast.error("기준 직책 저장에 실패했습니다.");
+      setRequestMinPosition(prev);
+    } else {
+      toast.success(`요청사항 배정 기준을 '${value} 이상'으로 저장했습니다.`);
+    }
+    setRequestMinSaving(false);
+  };
 
   const fetchChatModel = useCallback(async () => {
     setModelsLoading(true);
@@ -706,7 +752,8 @@ export default function SettingsPage() {
     fetchGeminiSettings();
     fetchSlackSettings();
     fetchNotificationFilters();
-  }, [fetchApiKeys, fetchProjectTypes, fetchExpenseTypes, fetchScheduleCategories, fetchChatModel, fetchBoltaSettings, fetchGeminiSettings, fetchSlackSettings, fetchNotificationFilters]);
+    fetchRequestMinPosition();
+  }, [fetchApiKeys, fetchProjectTypes, fetchExpenseTypes, fetchScheduleCategories, fetchChatModel, fetchBoltaSettings, fetchGeminiSettings, fetchSlackSettings, fetchNotificationFilters, fetchRequestMinPosition]);
 
   const openTypeDialog = (type?: ProjectType) => {
     setEditingType(type ?? null);
@@ -1176,6 +1223,42 @@ export default function SettingsPage() {
               onSelect={(id) => void handleGeminiModelChange(id)}
           />
         </div>
+      </PageSection>
+
+      <PageSection
+        title="요청사항 배정 권한"
+        description="업무현황에서 '요청사항'을 다른 직원에게 배정할 수 있는 최소 직책을 정합니다. 관리자는 직책과 무관하게 항상 배정할 수 있습니다."
+      >
+        <SectionCard>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="space-y-2">
+              <Label htmlFor="request_min_position">배정 가능 최소 직책</Label>
+              <Select
+                value={requestMinPosition}
+                onValueChange={(v) => void handleSaveRequestMinPosition(v)}
+                disabled={requestMinSaving}
+              >
+                <SelectTrigger id="request_min_position" className="w-48">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {POSITION_RANKS.map((p) => (
+                    <SelectItem key={p.name} value={p.name}>
+                      {p.name} 이상
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-xs text-muted-foreground sm:pb-2">
+              현재 기준: <span className="font-medium text-foreground">{requestMinPosition} 이상</span>
+              {requestMinSaving ? " · 저장 중..." : ""}
+              <br />
+              직책 서열은 사원 &lt; 주임 &lt; 대리 &lt; 과장 &lt; 차장 &lt; 부장 &lt; 이사 &lt; 상무 &lt; 전무 &lt; 부사장 &lt; 대표 순입니다.
+              (직원관리의 &lsquo;직급&rsquo; 값이 이 목록과 정확히 일치해야 인식됩니다.)
+            </p>
+          </div>
+        </SectionCard>
       </PageSection>
 
       <PageSection

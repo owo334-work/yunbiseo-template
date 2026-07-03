@@ -110,7 +110,7 @@ export default function WorkStatusListPage() {
     <PageShell>
       <PageHeader
         title="업무현황"
-        description="직원을 선택하면 일간·주간·월간 업무리스트와 추가 지시사항, 진행상태를 확인할 수 있습니다."
+        description="직원을 선택하면 일간·주간·월간 업무리스트와 요청사항, 진행상태를 확인할 수 있습니다."
       />
 
       <StatsGrid>

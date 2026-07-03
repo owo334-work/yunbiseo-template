@@ -12,14 +12,16 @@ import { createClient } from "@/lib/supabase/client";
 
 type AssignEmployee = { id: string; name: string; department: string | null };
 
-export function InstructionAssignPanel({
+export function RequestAssignPanel({
   employees,
   currentDepartment,
+  minPosition,
   authUid,
   onAssigned,
 }: {
   employees: AssignEmployee[];
   currentDepartment: string | null;
+  minPosition: string;
   authUid: string | null;
   onAssigned: (targetEmployeeIds: string[]) => void;
 }) {
@@ -50,11 +52,11 @@ export function InstructionAssignPanel({
     const targets = Array.from(selected);
     const trimmed = title.trim();
     if (!trimmed) {
-      toast.info("업무 내용을 입력하세요.");
+      toast.info("요청할 업무 내용을 입력하세요.");
       return;
     }
     if (targets.length === 0) {
-      toast.info("담당 직원을 한 명 이상 선택하세요.");
+      toast.info("요청 받을 직원을 한 명 이상 선택하세요.");
       return;
     }
     setSending(true);
@@ -71,10 +73,10 @@ export function InstructionAssignPanel({
     }));
     const { error } = await supabase.from("work_status_tasks").insert(rows);
     if (error) {
-      console.error("지시사항 배정 실패:", error.message);
-      toast.error("지시사항 배정에 실패했습니다.");
+      console.error("요청사항 배정 실패:", error.message);
+      toast.error("요청사항 배정에 실패했습니다. 권한(직책)을 확인해 주세요.");
     } else {
-      toast.success(`${targets.length}명에게 지시사항을 보냈습니다.`);
+      toast.success(`${targets.length}명에게 요청사항을 보냈습니다.`);
       onAssigned(targets);
       setTitle("");
       setDue("");
@@ -89,16 +91,20 @@ export function InstructionAssignPanel({
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-sm">
           <Megaphone className="h-4 w-4 text-primary" />
-          지시사항 배정 <span className="text-xs font-normal text-muted-foreground">(관리자 전용)</span>
+          요청사항 배정{" "}
+          <span className="text-xs font-normal text-muted-foreground">
+            ({minPosition} 이상 · 관리자)
+          </span>
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          담당 직원을 선택해 지시사항을 보내면, 각 직원의 &lsquo;추가 지시사항&rsquo; 목록에 표시됩니다.
+          요청 받을 직원을 선택해 업무를 보내면, 각 직원의 &lsquo;요청사항 업무&rsquo; 목록에 표시됩니다.
+          진행상황은 내가 보낸 &lsquo;요청한 업무&rsquo;에서 확인할 수 있습니다.
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex flex-col gap-2 sm:flex-row">
           <Input
-            placeholder="업무 내용"
+            placeholder="요청 업무 내용"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             className="flex-1"
@@ -121,7 +127,7 @@ export function InstructionAssignPanel({
         <div className="space-y-2 rounded-lg border border-border/60 bg-background/50 p-2.5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-muted-foreground">
-              담당 직원 선택 ({selected.size}명)
+              요청 받을 직원 선택 ({selected.size}명)
             </span>
             <div className="flex gap-1.5">
               <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" onClick={selectTeam}>
@@ -161,7 +167,7 @@ export function InstructionAssignPanel({
         <div className="flex justify-end">
           <Button onClick={() => void send()} disabled={sending || !title.trim() || selected.size === 0}>
             <Megaphone className="h-4 w-4" />
-            지시 보내기
+            요청 보내기
           </Button>
         </div>
       </CardContent>
