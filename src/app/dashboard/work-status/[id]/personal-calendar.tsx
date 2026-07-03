@@ -41,6 +41,8 @@ export function PersonalCalendar({
 
   const [open, setOpen] = useState(false);
   const [date, setDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [isRange, setIsRange] = useState(false);
   const [allDay, setAllDay] = useState(false);
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("10:00");
@@ -49,7 +51,10 @@ export function PersonalCalendar({
 
   const openAdd = (d?: Date) => {
     const base = d ?? new Date();
-    setDate(format(base, "yyyy-MM-dd"));
+    const iso = format(base, "yyyy-MM-dd");
+    setDate(iso);
+    setEndDate(iso);
+    setIsRange(false);
     setTitle("");
     setAllDay(false);
     setStartTime("09:00");
@@ -57,14 +62,25 @@ export function PersonalCalendar({
     setOpen(true);
   };
 
+  const toggleRange = () => {
+    setIsRange((prev) => {
+      const next = !prev;
+      // 기간으로 켤 때 종료 날짜가 비었거나 시작보다 빠르면 시작 날짜로 맞춘다
+      if (next && (!endDate || endDate < date)) setEndDate(date);
+      return next;
+    });
+  };
+
   const save = async () => {
     if (!title.trim() || !date) {
       toast.info("일정 제목과 날짜를 입력하세요.");
       return;
     }
+    // 기간 일정: 종료 날짜, 없거나 시작보다 빠르면 시작 날짜로 처리
+    const lastDay = isRange && endDate && endDate >= date ? endDate : date;
     setSaving(true);
     const start_at = allDay ? toIso(date, "00:00") : toIso(date, startTime);
-    const end_at = allDay ? toIso(date, "23:59") : toIso(date, endTime);
+    const end_at = allDay ? toIso(lastDay, "23:59") : toIso(lastDay, endTime);
     const { data, error } = await supabase
       .from("schedules")
       .insert({
@@ -154,9 +170,41 @@ export function PersonalCalendar({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="cal-date">날짜</Label>
-              <Input id="cal-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <div className="flex items-center justify-between">
+                <Label htmlFor="cal-date">{isRange ? "시작 날짜" : "날짜"}</Label>
+                <button
+                  type="button"
+                  onClick={toggleRange}
+                  className="rounded-md px-2 py-0.5 text-xs text-primary transition-colors hover:bg-primary/10"
+                >
+                  {isRange ? "− 기간 해제" : "+ 기간으로 (출장 등)"}
+                </button>
+              </div>
+              <Input
+                id="cal-date"
+                type="date"
+                value={date}
+                onChange={(e) => {
+                  setDate(e.target.value);
+                  if (isRange && (!endDate || endDate < e.target.value)) setEndDate(e.target.value);
+                }}
+              />
             </div>
+            {isRange ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="cal-end-date">종료 날짜</Label>
+                <Input
+                  id="cal-end-date"
+                  type="date"
+                  value={endDate}
+                  min={date}
+                  onChange={(e) => setEndDate(e.target.value)}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  시작~종료 날짜에 걸쳐 캘린더에 표시됩니다.
+                </p>
+              </div>
+            ) : null}
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"

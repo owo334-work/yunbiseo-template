@@ -133,17 +133,18 @@ export function DeadlineTaskItem({
           )}
         </div>
 
-        {/* 진척도 게이지 */}
+        {/* 진척도 게이지 (바 + % 한 줄) */}
         <div className="space-y-1">
-          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-            <span>진척도</span>
-            <span className="font-semibold text-foreground">{progress}%</span>
-          </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-            <div
-              className={`h-full rounded-full transition-all ${progressTone(progress)}`}
-              style={{ width: `${progress}%` }}
-            />
+          <div className="flex items-center gap-2">
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+              <div
+                className={`h-full rounded-full transition-all ${progressTone(progress)}`}
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <span className="w-9 shrink-0 text-right text-[11px] font-semibold text-foreground">
+              {progress}%
+            </span>
           </div>
           {canEdit ? (
             <input
