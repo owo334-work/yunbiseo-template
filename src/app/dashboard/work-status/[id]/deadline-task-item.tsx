@@ -133,19 +133,8 @@ export function DeadlineTaskItem({
           )}
         </div>
 
-        {/* 진척도 게이지 (바 + % 한 줄) */}
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
-              <div
-                className={`h-full rounded-full transition-all ${progressTone(progress)}`}
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-            <span className="w-9 shrink-0 text-right text-[11px] font-semibold text-foreground">
-              {progress}%
-            </span>
-          </div>
+        {/* 진척도: 조절 슬라이더(또는 게이지 바) + % 를 한 줄에 */}
+        <div className="flex items-center gap-2">
           {canEdit ? (
             <input
               type="range"
@@ -156,10 +145,20 @@ export function DeadlineTaskItem({
               onChange={(e) => setProgress(Number(e.target.value))}
               onPointerUp={() => void saveProgress(progress)}
               onKeyUp={() => void saveProgress(progress)}
-              className="mt-1 w-full accent-sky-600"
+              className="h-2 flex-1 accent-sky-600"
               aria-label="진척도"
             />
-          ) : null}
+          ) : (
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+              <div
+                className={`h-full rounded-full transition-all ${progressTone(progress)}`}
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          )}
+          <span className="w-9 shrink-0 text-right text-[11px] font-semibold text-foreground">
+            {progress}%
+          </span>
         </div>
 
         {/* 메모 */}
