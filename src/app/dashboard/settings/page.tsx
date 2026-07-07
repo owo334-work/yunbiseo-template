@@ -44,6 +44,12 @@ import {
   POSITION_RANKS,
   REQUEST_MIN_POSITION_KEY,
 } from "@/lib/work-status";
+import {
+  colorForDepartment,
+  DEPARTMENT_COLORS_KEY,
+  parseDepartmentColors,
+  type DepartmentColorMap,
+} from "@/lib/department-colors";
 
 import { Badge } from "@/components/ui/badge";
 
@@ -333,6 +339,11 @@ export default function SettingsPage() {
   const [requestMinPosition, setRequestMinPosition] = useState<string>(DEFAULT_REQUEST_MIN_POSITION);
   const [requestMinSaving, setRequestMinSaving] = useState(false);
 
+  // 부서별 일정 색상
+  const [departments, setDepartments] = useState<string[]>([]);
+  const [deptColors, setDeptColors] = useState<DepartmentColorMap>({});
+  const [deptColorSaving, setDeptColorSaving] = useState(false);
+
 
   const fetchApiKeys = useCallback(async () => {
     setLoading(true);
@@ -400,6 +411,38 @@ export default function SettingsPage() {
     }
     setRequestMinPosition(data?.value || DEFAULT_REQUEST_MIN_POSITION);
   }, [supabase]);
+
+  const fetchDeptColors = useCallback(async () => {
+    const [empRes, settingRes] = await Promise.all([
+      supabase.from("employees").select("department").limit(1000),
+      supabase
+        .from("system_settings")
+        .select("value")
+        .eq("key", DEPARTMENT_COLORS_KEY)
+        .maybeSingle(),
+    ]);
+    const set = new Set<string>();
+    for (const e of empRes.data ?? []) {
+      const d = (e.department ?? "").trim();
+      if (d) set.add(d);
+    }
+    setDepartments(Array.from(set).sort((a, b) => a.localeCompare(b, "ko")));
+    setDeptColors(parseDepartmentColors(settingRes.data?.value));
+  }, [supabase]);
+
+  const persistDeptColors = async (next: DepartmentColorMap) => {
+    setDeptColorSaving(true);
+    const { error } = await supabase
+      .from("system_settings")
+      .upsert({ key: DEPARTMENT_COLORS_KEY, value: JSON.stringify(next), updated_at: new Date().toISOString() });
+    if (error) {
+      console.error("부서 색상 저장 실패:", error.message);
+      toast.error("부서 색상 저장에 실패했습니다.");
+    } else {
+      toast.success("부서 색상을 저장했습니다.");
+    }
+    setDeptColorSaving(false);
+  };
 
   const handleSaveRequestMinPosition = async (value: string) => {
     setRequestMinSaving(true);
@@ -753,7 +796,8 @@ export default function SettingsPage() {
     fetchSlackSettings();
     fetchNotificationFilters();
     fetchRequestMinPosition();
-  }, [fetchApiKeys, fetchProjectTypes, fetchExpenseTypes, fetchScheduleCategories, fetchChatModel, fetchBoltaSettings, fetchGeminiSettings, fetchSlackSettings, fetchNotificationFilters, fetchRequestMinPosition]);
+    fetchDeptColors();
+  }, [fetchApiKeys, fetchProjectTypes, fetchExpenseTypes, fetchScheduleCategories, fetchChatModel, fetchBoltaSettings, fetchGeminiSettings, fetchSlackSettings, fetchNotificationFilters, fetchRequestMinPosition, fetchDeptColors]);
 
   const openTypeDialog = (type?: ProjectType) => {
     setEditingType(type ?? null);
@@ -1258,6 +1302,55 @@ export default function SettingsPage() {
               (직원관리의 &lsquo;직급&rsquo; 값이 이 목록과 정확히 일치해야 인식됩니다.)
             </p>
           </div>
+        </SectionCard>
+      </PageSection>
+
+      <PageSection
+        title="부서별 일정 색상"
+        description="전 직원 일정(메인 캘린더)에서 각 부서의 일정을 지정한 색으로 구분해 표시합니다. 색을 지정하지 않은 부서는 자동 색상이 배정됩니다."
+      >
+        <SectionCard>
+          {departments.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              부서가 지정된 직원이 없습니다. 직원관리에서 부서를 설정하면 여기에서 색을 지정할 수 있습니다.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {departments.map((dept) => {
+                  const color = colorForDepartment(dept, deptColors);
+                  return (
+                    <div
+                      key={dept}
+                      className="flex items-center gap-3 rounded-lg border border-border/70 bg-background/60 p-3"
+                    >
+                      <span
+                        className="inline-block h-5 w-5 shrink-0 rounded-full border border-border/50"
+                        style={{ backgroundColor: color }}
+                      />
+                      <span className="flex-1 truncate text-sm font-medium text-foreground">{dept}</span>
+                      <input
+                        type="color"
+                        value={color}
+                        disabled={deptColorSaving}
+                        onChange={(e) =>
+                          setDeptColors((prev) => ({ ...prev, [dept]: e.target.value }))
+                        }
+                        onBlur={(e) =>
+                          void persistDeptColors({ ...deptColors, [dept]: e.target.value })
+                        }
+                        className="h-8 w-12 cursor-pointer rounded border border-border/70 bg-transparent p-0.5"
+                        aria-label={`${dept} 색상`}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                색상 선택 후 밖을 클릭하면 저장됩니다.{deptColorSaving ? " · 저장 중..." : ""}
+              </p>
+            </div>
+          )}
         </SectionCard>
       </PageSection>
 

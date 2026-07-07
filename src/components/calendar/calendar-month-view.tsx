@@ -19,6 +19,8 @@ interface CalendarMonthViewProps {
   schedules: Schedule[];
   onDateClick: (date: Date) => void;
   onEventClick: (schedule: Schedule) => void;
+  /** 일정별 색상 지정 (예: 부서별 색상). 없으면 카테고리 색을 쓴다. */
+  getEventColor?: (schedule: Schedule) => string | undefined;
 }
 
 export function CalendarMonthView({
@@ -26,6 +28,7 @@ export function CalendarMonthView({
   schedules,
   onDateClick,
   onEventClick,
+  getEventColor,
 }: CalendarMonthViewProps) {
   const grid = useMemo(() => getMonthGrid(currentDate), [currentDate]);
 
@@ -102,12 +105,22 @@ export function CalendarMonthView({
               <div className="mt-0.5 flex flex-col gap-0.5">
                 {events.map((ev) => (
                   <div key={ev.id} className="sm:hidden">
-                    <CalendarEvent schedule={ev} compact onClick={() => onEventClick(ev)} />
+                    <CalendarEvent
+                      schedule={ev}
+                      compact
+                      colorOverride={getEventColor?.(ev)}
+                      onClick={() => onEventClick(ev)}
+                    />
                   </div>
                 ))}
                 {events.map((ev) => (
                   <div key={ev.id} className="hidden sm:block">
-                    <CalendarEvent schedule={ev} compact onClick={() => onEventClick(ev)} />
+                    <CalendarEvent
+                      schedule={ev}
+                      compact
+                      colorOverride={getEventColor?.(ev)}
+                      onClick={() => onEventClick(ev)}
+                    />
                   </div>
                 ))}
               </div>

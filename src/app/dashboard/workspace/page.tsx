@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarDays, ChevronLeft, ChevronRight, ClipboardList, ListChecks, Users } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
@@ -12,8 +12,6 @@ import {
   PageHeader,
   PageShell,
   PageToolbar,
-  StatCard,
-  StatsGrid,
 } from "@/components/page-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,6 +21,13 @@ import { addMonths, subMonths, startOfMonth, format } from "@/components/calenda
 import { createClient } from "@/lib/supabase/client";
 import type { Employee, Schedule, WorkListType, WorkStatusTask, WorkStatusValue } from "@/lib/types";
 import { WORK_LIST_TYPES, WORK_STATUS_STYLES } from "@/lib/work-status";
+import {
+  colorForDepartment,
+  DEPARTMENT_COLORS_KEY,
+  NO_DEPARTMENT_COLOR,
+  parseDepartmentColors,
+  type DepartmentColorMap,
+} from "@/lib/department-colors";
 
 // 카드 미리보기에서 보여줄 업무 우선순위 (진행중 → 미진행 → 보류 → 완료)
 const STATUS_PRIORITY: Record<WorkStatusValue, number> = {
@@ -55,6 +60,7 @@ export default function WorkspacePage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [tasks, setTasks] = useState<WorkStatusTask[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [deptColors, setDeptColors] = useState<DepartmentColorMap>({});
   const [calMonth, setCalMonth] = useState<Date>(() => startOfMonth(new Date()));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -66,10 +72,15 @@ export default function WorkspacePage() {
     setError(false);
     setTableMissing(false);
 
-    const [employeeRes, taskRes, scheduleRes] = await Promise.all([
+    const [employeeRes, taskRes, scheduleRes, deptColorRes] = await Promise.all([
       supabase.from("employees").select("*").order("name", { ascending: true }).limit(1000),
       supabase.from("work_status_tasks").select("*").limit(5000),
       supabase.from("schedules").select("*").limit(5000),
+      supabase
+        .from("system_settings")
+        .select("value")
+        .eq("key", DEPARTMENT_COLORS_KEY)
+        .maybeSingle(),
     ]);
 
     if (employeeRes.error) {
@@ -81,6 +92,7 @@ export default function WorkspacePage() {
 
     setEmployees((employeeRes.data ?? []).filter((e) => e.is_active !== false));
     setSchedules(scheduleRes.error ? [] : ((scheduleRes.data ?? []) as Schedule[]));
+    setDeptColors(parseDepartmentColors(deptColorRes.data?.value));
 
     if (taskRes.error) {
       // 마이그레이션(work_status_tasks)이 아직 적용되지 않은 경우
@@ -114,6 +126,35 @@ export default function WorkspacePage() {
     });
   }, [employees, tasks]);
 
+  // 일정 작성자(직원) → 부서 색상
+  const empDeptById = useMemo(() => {
+    const m = new Map<string, string | null>();
+    for (const e of employees) m.set(e.id, e.department ?? null);
+    return m;
+  }, [employees]);
+
+  const getEventColor = useCallback(
+    (s: Schedule) => colorForDepartment(empDeptById.get(s.created_by) ?? null, deptColors),
+    [empDeptById, deptColors],
+  );
+
+  // 캘린더 범례용 부서 목록 (+ 부서 미지정 존재 여부)
+  const deptLegend = useMemo(() => {
+    const set = new Set<string>();
+    let hasNone = false;
+    for (const e of employees) {
+      const d = e.department?.trim();
+      if (d) set.add(d);
+      else hasNone = true;
+    }
+    return {
+      items: Array.from(set)
+        .sort((a, b) => a.localeCompare(b, "ko"))
+        .map((d) => ({ name: d, color: colorForDepartment(d, deptColors) })),
+      hasNone,
+    };
+  }, [employees, deptColors]);
+
   const keyword = search.trim();
   const filtered = employeesWithTasks.filter((employee) => {
     if (!keyword) return true;
@@ -124,23 +165,12 @@ export default function WorkspacePage() {
     );
   });
 
-  const totalTasks = tasks.length;
-  const inProgress = tasks.filter((t) => t.status === "진행중").length;
-  const done = tasks.filter((t) => t.status === "완료").length;
-
   return (
     <PageShell>
       <PageHeader
         title="업무 대시보드"
         description="전 직원의 업무현황을 한눈에 확인합니다. 직원 카드를 누르면 일간·주간·월간 업무리스트와 진행상태를 볼 수 있습니다."
       />
-
-      <StatsGrid>
-        <StatCard label="전체 직원" value={`${employees.length}명`} icon={Users} />
-        <StatCard label="등록된 업무" value={`${totalTasks}건`} icon={ClipboardList} />
-        <StatCard label="진행중" value={`${inProgress}건`} icon={ListChecks} tone="info" />
-        <StatCard label="완료" value={`${done}건`} icon={ListChecks} tone="success" />
-      </StatsGrid>
 
       {tableMissing ? (
         <div className="rounded-[1.5rem] border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-800">
@@ -191,10 +221,34 @@ export default function WorkspacePage() {
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
+          {deptLegend.items.length > 0 || deptLegend.hasNone ? (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+              <span className="text-xs text-muted-foreground">부서별 색상</span>
+              {deptLegend.items.map((d) => (
+                <span key={d.name} className="flex items-center gap-1.5 text-xs text-foreground">
+                  <span
+                    className="inline-block h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: d.color }}
+                  />
+                  {d.name}
+                </span>
+              ))}
+              {deptLegend.hasNone ? (
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span
+                    className="inline-block h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: NO_DEPARTMENT_COLOR }}
+                  />
+                  부서 미지정
+                </span>
+              ) : null}
+            </div>
+          ) : null}
           <CalendarMonthView
             currentDate={calMonth}
             schedules={schedules}
+            getEventColor={getEventColor}
             onDateClick={() => router.push("/dashboard/schedules")}
             onEventClick={() => router.push("/dashboard/schedules")}
           />

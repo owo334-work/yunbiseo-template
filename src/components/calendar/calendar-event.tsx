@@ -10,14 +10,16 @@ interface CalendarEventProps {
   short?: boolean;
   onClick?: (e: React.MouseEvent) => void;
   startAtOverride?: string;
+  /** 지정 시 카테고리 색 대신 이 색을 쓴다 (예: 부서별 색상) */
+  colorOverride?: string;
 }
 
-export function CalendarEvent({ schedule, compact, short, onClick, startAtOverride }: CalendarEventProps) {
+export function CalendarEvent({ schedule, compact, short, onClick, startAtOverride, colorOverride }: CalendarEventProps) {
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     onClick?.(e);
   };
-  const categoryColor = getCategoryColor(schedule.category);
+  const categoryColor = colorOverride ?? getCategoryColor(schedule.category);
   const displayStartAt = startAtOverride ?? schedule.start_at;
 
   const startTime = schedule.all_day
