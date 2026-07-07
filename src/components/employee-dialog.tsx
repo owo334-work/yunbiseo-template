@@ -36,6 +36,7 @@ const emptyForm: EmployeeForm = {
   phone: "",
   slack_id: "",
   hire_date: "",
+  birthday: "",
   login_id: "",
 };
 
@@ -60,6 +61,7 @@ export function EmployeeDialog({
         phone: employee.phone ?? "",
         slack_id: suggestSlackIdForEmployee(employee.name, employee.slack_id),
         hire_date: employee.hire_date ?? "",
+        birthday: employee.birthday ?? "",
         login_id: employee.login_id ?? "",
       });
     } else {
@@ -189,6 +191,15 @@ export function EmployeeDialog({
                 type="date"
                 value={form.hire_date ?? ""}
                 onChange={(e) => update("hire_date", e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="birthday">생일</Label>
+              <Input
+                id="birthday"
+                type="date"
+                value={form.birthday ?? ""}
+                onChange={(e) => update("birthday", e.target.value)}
               />
             </div>
           </div>

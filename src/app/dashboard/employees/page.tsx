@@ -150,6 +150,7 @@ export default function EmployeesPage() {
       phone: rest.phone || null,
       slack_id: rest.slack_id || null,
       hire_date: rest.hire_date || null,
+      birthday: rest.birthday || null,
       login_id: login_id || null,
     };
     const cleaned = employeeTypeEnabled

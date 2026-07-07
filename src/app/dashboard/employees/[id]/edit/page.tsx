@@ -52,6 +52,7 @@ export default function EmployeeEditPage() {
     phone: string;
     slack_id: string;
     hire_date: string;
+    birthday: string;
     login_id: string;
   }>({
     name: "",
@@ -63,6 +64,7 @@ export default function EmployeeEditPage() {
     phone: "",
     slack_id: "",
     hire_date: "",
+    birthday: "",
     login_id: "",
   });
 
@@ -98,6 +100,7 @@ export default function EmployeeEditPage() {
         phone: data.phone ?? "",
         slack_id: suggestSlackIdForEmployee(data.name, data.slack_id),
         hire_date: data.hire_date ?? "",
+        birthday: data.birthday ?? "",
         login_id: loginId,
       });
     }
@@ -141,6 +144,7 @@ export default function EmployeeEditPage() {
         phone: form.phone || null,
         slack_id: form.slack_id || null,
         hire_date: form.hire_date || null,
+        birthday: form.birthday || null,
         login_id: form.login_id || null,
         is_finance: form.is_finance,
       };
@@ -365,6 +369,17 @@ export default function EmployeeEditPage() {
                 type="date"
                 value={form.hire_date}
                 onChange={(e) => handleChange("hire_date", e.target.value)}
+              />
+            </div>
+
+            {/* 생일 */}
+            <div className="space-y-2">
+              <Label htmlFor="birthday">생일</Label>
+              <Input
+                id="birthday"
+                type="date"
+                value={form.birthday}
+                onChange={(e) => handleChange("birthday", e.target.value)}
               />
             </div>
           </div>
