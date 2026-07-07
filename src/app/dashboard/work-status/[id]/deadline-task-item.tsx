@@ -40,7 +40,7 @@ export function DeadlineTaskItem({
   const [progress, setProgress] = useState(task.progress ?? 0);
   const [memo, setMemo] = useState(task.detail ?? "");
   const [status, setStatus] = useState<WorkStatusValue>(task.status);
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
   const [archiving, setArchiving] = useState(false);
 
   const archive = async () => {
@@ -86,7 +86,7 @@ export function DeadlineTaskItem({
 
   return (
     <Card className="border-border/70 bg-card/85">
-      <CardContent className="space-y-2 p-2.5">
+      <CardContent className="space-y-2.5 p-3">
         <div className="flex items-start justify-between gap-2">
           <button
             type="button"
@@ -169,9 +169,11 @@ export function DeadlineTaskItem({
           )}
         </div>
 
-        {/* 진척도 (짧게): 접힘=게이지 바, 펼침=조절 슬라이더 + % */}
+        {collapsed ? null : (
+          <>
+        {/* 진척도: 조절 슬라이더(또는 게이지 바) + % 를 한 줄에 */}
         <div className="flex items-center gap-2">
-          {!collapsed && canEdit ? (
+          {canEdit ? (
             <input
               type="range"
               min={0}
@@ -185,7 +187,7 @@ export function DeadlineTaskItem({
               aria-label="진척도"
             />
           ) : (
-            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
               <div
                 className={`h-full rounded-full transition-all ${progressTone(progress)}`}
                 style={{ width: `${progress}%` }}
@@ -197,42 +199,41 @@ export function DeadlineTaskItem({
           </span>
         </div>
 
-        {/* 펼쳤을 때만: 메모 + 완료건 보관 */}
-        {collapsed ? null : (
-          <>
-            {canEdit ? (
-              <textarea
-                value={memo}
-                onChange={(e) => setMemo(e.target.value)}
-                onBlur={() => {
-                  if (memo !== (task.detail ?? "")) void persist({ detail: memo || null });
-                }}
-                placeholder="메모 (업무 관련 메모를 적어두세요)"
-                rows={2}
-                className="w-full resize-y rounded-lg border border-border/70 bg-background/80 px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
-              />
-            ) : memo ? (
-              <p className="whitespace-pre-wrap rounded-lg bg-muted/50 px-2.5 py-1.5 text-xs text-muted-foreground">
-                {memo}
-              </p>
-            ) : null}
-
-            {canEdit && status === "완료" ? (
-              <div className="flex justify-end pt-0.5">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 gap-1.5 text-xs"
-                  onClick={() => void archive()}
-                  disabled={archiving}
-                >
-                  <Archive className="h-3.5 w-3.5" />
-                  보관함으로
-                </Button>
-              </div>
-            ) : null}
+        {/* 메모 */}
+        {canEdit ? (
+          <textarea
+            value={memo}
+            onChange={(e) => setMemo(e.target.value)}
+            onBlur={() => {
+              if (memo !== (task.detail ?? "")) void persist({ detail: memo || null });
+            }}
+            placeholder="메모 (업무 관련 메모를 적어두세요)"
+            rows={2}
+            className="w-full resize-y rounded-lg border border-border/70 bg-background/80 px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+          />
+        ) : memo ? (
+          <p className="whitespace-pre-wrap rounded-lg bg-muted/50 px-2.5 py-1.5 text-xs text-muted-foreground">
+            {memo}
+          </p>
+        ) : null}
           </>
         )}
+
+        {/* 완료건 보관 */}
+        {canEdit && status === "완료" ? (
+          <div className="flex justify-end pt-0.5">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1.5 text-xs"
+              onClick={() => void archive()}
+              disabled={archiving}
+            >
+              <Archive className="h-3.5 w-3.5" />
+              보관함으로
+            </Button>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );
