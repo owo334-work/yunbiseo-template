@@ -10,9 +10,18 @@ import {
   isSameMonth,
   isToday,
   format,
+  toPastel,
 } from "./calendar-utils";
 
 const DAY_LABELS = ["월", "화", "수", "목", "금", "토", "일"];
+
+// 날짜칸 상단에 고정 표시되는 마커 (연차/월차, 생일 등 — 업무 일정과 분리)
+export type DayMarker = {
+  id: string;
+  label: string;
+  color?: string;
+  emoji?: string;
+};
 
 interface CalendarMonthViewProps {
   currentDate: Date;
@@ -21,6 +30,8 @@ interface CalendarMonthViewProps {
   onEventClick: (schedule: Schedule) => void;
   /** 일정별 색상 지정 (예: 부서별 색상). 없으면 카테고리 색을 쓴다. */
   getEventColor?: (schedule: Schedule) => string | undefined;
+  /** 날짜칸 상단에 고정 표시할 마커 (연차/월차·생일). dateKey = yyyy-MM-dd */
+  getDayMarkers?: (dateKey: string) => DayMarker[];
 }
 
 export function CalendarMonthView({
@@ -29,6 +40,7 @@ export function CalendarMonthView({
   onDateClick,
   onEventClick,
   getEventColor,
+  getDayMarkers,
 }: CalendarMonthViewProps) {
   const grid = useMemo(() => getMonthGrid(currentDate), [currentDate]);
 
@@ -74,6 +86,7 @@ export function CalendarMonthView({
         {grid.map((day, idx) => {
           const key = format(day, "yyyy-MM-dd");
           const events = eventsByDay.get(key) ?? [];
+          const markers = getDayMarkers?.(key) ?? [];
           const dayOfWeek = day.getDay();
           const inMonth = isSameMonth(day, currentDate);
           const today = isToday(day);
@@ -100,6 +113,25 @@ export function CalendarMonthView({
               >
                 {format(day, "d")}
               </span>
+
+              {/* 연차/월차·생일 마커 (상단 고정, 업무 일정과 분리) */}
+              {markers.length > 0 ? (
+                <div className="mt-0.5 flex flex-col gap-0.5">
+                  {markers.map((m) => (
+                    <div
+                      key={m.id}
+                      className="truncate rounded px-1 py-0.5 text-[9px] font-medium leading-tight sm:text-[10px]"
+                      style={{
+                        backgroundColor: toPastel(m.color ?? "#6b7280"),
+                        color: m.color ?? "#6b7280",
+                      }}
+                    >
+                      {m.emoji ? `${m.emoji} ` : ""}
+                      {m.label}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
 
               {/* Events */}
               <div className="mt-0.5 flex flex-col gap-0.5">

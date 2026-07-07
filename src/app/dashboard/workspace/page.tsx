@@ -16,10 +16,30 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { CalendarMonthView } from "@/components/calendar/calendar-month-view";
-import { addMonths, subMonths, startOfMonth, format } from "@/components/calendar/calendar-utils";
+import { CalendarMonthView, type DayMarker } from "@/components/calendar/calendar-month-view";
+import {
+  addDays,
+  addMonths,
+  DEFAULT_SCHEDULE_CATEGORIES,
+  format,
+  getCategoryColor,
+  isLeaveCategory,
+  parseISO,
+  setLoadedCategories,
+  startOfDay,
+  startOfMonth,
+  subMonths,
+} from "@/components/calendar/calendar-utils";
+import { DayDetailDialog } from "./day-detail-dialog";
 import { createClient } from "@/lib/supabase/client";
-import type { Employee, Schedule, WorkListType, WorkStatusTask, WorkStatusValue } from "@/lib/types";
+import type {
+  Employee,
+  Schedule,
+  ScheduleCategoryItem,
+  WorkListType,
+  WorkStatusTask,
+  WorkStatusValue,
+} from "@/lib/types";
 import { WORK_LIST_TYPES, WORK_STATUS_STYLES } from "@/lib/work-status";
 import {
   colorForDepartment,
@@ -43,6 +63,9 @@ const LIST_SHORT: Record<WorkListType, string> = WORK_LIST_TYPES.reduce(
 );
 
 const PREVIEW_LIMIT = 4;
+
+// 생일 마커 색상 (핑크)
+const BIRTHDAY_COLOR = "#ec4899";
 
 // 진척도 게이지 색상
 function progressBarTone(value: number) {
@@ -69,6 +92,9 @@ export default function WorkspacePage() {
   const [tasks, setTasks] = useState<WorkStatusTask[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [deptColors, setDeptColors] = useState<DepartmentColorMap>({});
+  const [categories, setCategories] = useState<ScheduleCategoryItem[]>([]);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [dayDialogOpen, setDayDialogOpen] = useState(false);
   const [calMonth, setCalMonth] = useState<Date>(() => startOfMonth(new Date()));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -80,7 +106,7 @@ export default function WorkspacePage() {
     setError(false);
     setTableMissing(false);
 
-    const [employeeRes, taskRes, scheduleRes, deptColorRes] = await Promise.all([
+    const [employeeRes, taskRes, scheduleRes, deptColorRes, catRes] = await Promise.all([
       supabase.from("employees").select("*").order("name", { ascending: true }).limit(1000),
       supabase.from("work_status_tasks").select("*").limit(5000),
       supabase.from("schedules").select("*").limit(5000),
@@ -89,6 +115,11 @@ export default function WorkspacePage() {
         .select("value")
         .eq("key", DEPARTMENT_COLORS_KEY)
         .maybeSingle(),
+      supabase
+        .from("schedule_categories")
+        .select("*")
+        .order("sort_order", { ascending: true })
+        .limit(500),
     ]);
 
     if (employeeRes.error) {
@@ -101,6 +132,11 @@ export default function WorkspacePage() {
     setEmployees((employeeRes.data ?? []).filter((e) => e.is_active !== false));
     setSchedules(scheduleRes.error ? [] : ((scheduleRes.data ?? []) as Schedule[]));
     setDeptColors(parseDepartmentColors(deptColorRes.data?.value));
+    const loadedCats = catRes.error ? [] : ((catRes.data ?? []) as ScheduleCategoryItem[]);
+    setCategories(loadedCats);
+    if (loadedCats.length > 0) {
+      setLoadedCategories(loadedCats.map((c) => ({ value: c.value, color: c.color })));
+    }
 
     if (taskRes.error) {
       // 마이그레이션(work_status_tasks)이 아직 적용되지 않은 경우
@@ -168,6 +204,98 @@ export default function WorkspacePage() {
       hasNone,
     };
   }, [employees, deptColors]);
+
+  // 일정 유형 색상/라벨 조회용 (DB 값 없으면 기본값)
+  const catList = useMemo(
+    () => (categories.length > 0 ? categories : DEFAULT_SCHEDULE_CATEGORIES),
+    [categories],
+  );
+
+  // 직원 id → 이름
+  const employeeNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const e of employees) m.set(e.id, e.name);
+    return m;
+  }, [employees]);
+
+  // 업무 일정 / 연차·월차 분리 (연차·월차는 캘린더 상단 마커로 따로 표시)
+  const workSchedules = useMemo(
+    () => schedules.filter((s) => !isLeaveCategory(s.category)),
+    [schedules],
+  );
+  const leaveSchedules = useMemo(
+    () => schedules.filter((s) => isLeaveCategory(s.category)),
+    [schedules],
+  );
+
+  // 연차/월차를 날짜별로 펼쳐 매핑 (여러 날 범위 지원)
+  const leaveByDate = useMemo(() => {
+    const m = new Map<string, Schedule[]>();
+    for (const s of leaveSchedules) {
+      const start = startOfDay(parseISO(s.start_at));
+      const endRaw = parseISO(s.end_at);
+      const end = startOfDay(endRaw >= start ? endRaw : start);
+      let cur = start;
+      while (cur <= end) {
+        const key = format(cur, "yyyy-MM-dd");
+        const arr = m.get(key) ?? [];
+        arr.push(s);
+        m.set(key, arr);
+        cur = addDays(cur, 1);
+      }
+    }
+    return m;
+  }, [leaveSchedules]);
+
+  // 생일: MM-dd → 직원들 (해마다 반복)
+  const birthdaysByMonthDay = useMemo(() => {
+    const m = new Map<string, Employee[]>();
+    for (const e of employees) {
+      if (!e.birthday) continue;
+      const md = e.birthday.slice(5); // MM-dd
+      const arr = m.get(md) ?? [];
+      arr.push(e);
+      m.set(md, arr);
+    }
+    return m;
+  }, [employees]);
+
+  const getDayMarkers = useCallback(
+    (dateKey: string): DayMarker[] => {
+      const markers: DayMarker[] = [];
+      for (const e of birthdaysByMonthDay.get(dateKey.slice(5)) ?? []) {
+        markers.push({ id: `bday-${e.id}`, label: e.name, emoji: "🎂", color: BIRTHDAY_COLOR });
+      }
+      for (const s of leaveByDate.get(dateKey) ?? []) {
+        markers.push({ id: `leave-${s.id}`, label: s.title, color: getCategoryColor(s.category) });
+      }
+      return markers;
+    },
+    [birthdaysByMonthDay, leaveByDate],
+  );
+
+  const openDay = (day: Date) => {
+    setSelectedDate(day);
+    setDayDialogOpen(true);
+  };
+
+  // 선택한 날짜 상세 (팝업)
+  const selectedKey = selectedDate ? format(selectedDate, "yyyy-MM-dd") : null;
+  const selectedBirthdays = selectedKey
+    ? (birthdaysByMonthDay.get(selectedKey.slice(5)) ?? [])
+    : [];
+  const selectedLeaves = selectedKey ? (leaveByDate.get(selectedKey) ?? []) : [];
+  const selectedWorks = useMemo(() => {
+    if (!selectedKey) return [];
+    return workSchedules.filter((s) => {
+      const start = startOfDay(parseISO(s.start_at));
+      const endRaw = parseISO(s.end_at);
+      const end = startOfDay(endRaw >= start ? endRaw : start);
+      return (
+        format(start, "yyyy-MM-dd") <= selectedKey && selectedKey <= format(end, "yyyy-MM-dd")
+      );
+    });
+  }, [selectedKey, workSchedules]);
 
   const keyword = search.trim();
   const filtered = employeesWithTasks.filter((employee) => {
@@ -261,13 +389,26 @@ export default function WorkspacePage() {
           ) : null}
           <CalendarMonthView
             currentDate={calMonth}
-            schedules={schedules}
+            schedules={workSchedules}
             getEventColor={getEventColor}
-            onDateClick={() => router.push("/dashboard/schedules")}
-            onEventClick={() => router.push("/dashboard/schedules")}
+            getDayMarkers={getDayMarkers}
+            onDateClick={(day) => openDay(day)}
+            onEventClick={(s) => openDay(parseISO(s.start_at))}
           />
         </CardContent>
       </Card>
+
+      <DayDetailDialog
+        open={dayDialogOpen}
+        onOpenChange={setDayDialogOpen}
+        date={selectedDate}
+        birthdays={selectedBirthdays}
+        leaves={selectedLeaves}
+        works={selectedWorks}
+        employeeNameById={employeeNameById}
+        categories={catList}
+        onOpenSchedules={() => router.push("/dashboard/schedules")}
+      />
 
       <PageToolbar>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
