@@ -40,6 +40,8 @@ export interface WorkStatusTask {
   due_date: string | null;
   sort_order: number;
   created_by: string | null;
+  completed_at: string | null; // '완료'가 된 시각 (완료날짜)
+  archived_at: string | null; // 보관 시각 (NULL=활성 목록, 값=보관함)
   created_at: string;
   updated_at: string;
 }

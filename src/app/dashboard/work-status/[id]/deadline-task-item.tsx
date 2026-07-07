@@ -1,6 +1,6 @@
 "use client";
 
-import { Trash2 } from "lucide-react";
+import { Archive, ChevronDown, ChevronRight, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -29,15 +29,34 @@ export function DeadlineTaskItem({
   task,
   canEdit,
   onDeleted,
+  onArchived,
 }: {
   task: WorkStatusTask;
   canEdit: boolean;
   onDeleted: (id: string) => void;
+  onArchived?: (id: string) => void;
 }) {
   const supabase = useMemo(() => createClient(), []);
   const [progress, setProgress] = useState(task.progress ?? 0);
   const [memo, setMemo] = useState(task.detail ?? "");
   const [status, setStatus] = useState<WorkStatusValue>(task.status);
+  const [collapsed, setCollapsed] = useState(false);
+  const [archiving, setArchiving] = useState(false);
+
+  const archive = async () => {
+    setArchiving(true);
+    const { error } = await supabase
+      .from("work_status_tasks")
+      .update({ archived_at: new Date().toISOString() })
+      .eq("id", task.id);
+    if (error) {
+      toast.error("보관에 실패했습니다.");
+      setArchiving(false);
+      return;
+    }
+    toast.success("보관함으로 옮겼습니다.");
+    onArchived?.(task.id);
+  };
 
   const persist = async (patch: Partial<WorkStatusTask>) => {
     const { error } = await supabase
@@ -69,13 +88,25 @@ export function DeadlineTaskItem({
     <Card className="border-border/70 bg-card/85">
       <CardContent className="space-y-2.5 p-3">
         <div className="flex items-start justify-between gap-2">
-          <p
-            className={`text-sm font-medium ${
-              status === "완료" ? "text-muted-foreground line-through" : "text-foreground"
-            }`}
+          <button
+            type="button"
+            onClick={() => setCollapsed((c) => !c)}
+            className="flex flex-1 items-start gap-1.5 text-left"
+            aria-expanded={!collapsed}
           >
-            {task.title}
-          </p>
+            {collapsed ? (
+              <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+            )}
+            <span
+              className={`text-sm font-medium ${
+                status === "완료" ? "text-muted-foreground line-through" : "text-foreground"
+              }`}
+            >
+              {task.title}
+            </span>
+          </button>
           {canEdit ? (
             <Button
               variant="ghost"
@@ -109,6 +140,11 @@ export function DeadlineTaskItem({
           ) : (
             <span className="text-muted-foreground">마감기한 없음</span>
           )}
+          {status === "완료" && task.completed_at ? (
+            <span className="text-emerald-600">
+              완료 {task.completed_at.slice(0, 10)}
+            </span>
+          ) : null}
           {canEdit ? (
             <Select value={status} onValueChange={(v) => void (async () => {
               const next = v as WorkStatusValue;
@@ -133,6 +169,8 @@ export function DeadlineTaskItem({
           )}
         </div>
 
+        {collapsed ? null : (
+          <>
         {/* 진척도: 조절 슬라이더(또는 게이지 바) + % 를 한 줄에 */}
         <div className="flex items-center gap-2">
           {canEdit ? (
@@ -177,6 +215,24 @@ export function DeadlineTaskItem({
           <p className="whitespace-pre-wrap rounded-lg bg-muted/50 px-2.5 py-1.5 text-xs text-muted-foreground">
             {memo}
           </p>
+        ) : null}
+          </>
+        )}
+
+        {/* 완료건 보관 */}
+        {canEdit && status === "완료" ? (
+          <div className="flex justify-end pt-0.5">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 gap-1.5 text-xs"
+              onClick={() => void archive()}
+              disabled={archiving}
+            >
+              <Archive className="h-3.5 w-3.5" />
+              보관함으로
+            </Button>
+          </div>
         ) : null}
       </CardContent>
     </Card>

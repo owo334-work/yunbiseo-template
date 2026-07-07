@@ -1,6 +1,7 @@
 "use client";
 
-import { CalendarDays, Mail, Phone, Plus, Trash2 } from "lucide-react";
+import { Archive, CalendarDays, Mail, Phone, Plus, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -317,8 +318,41 @@ export default function WorkStatusDetailPage() {
     );
   }
 
-  const deadlineTasks = tasks.filter((t) => t.list_type === "deadline");
-  const instructionTasks = tasks.filter((t) => t.list_type === "instruction");
+  // 보관되지 않은(활성) 마감·요청 업무만 대시보드에 노출
+  const deadlineTasks = tasks.filter(
+    (t) => t.list_type === "deadline" && t.archived_at == null,
+  );
+  const instructionTasks = tasks.filter(
+    (t) => t.list_type === "instruction" && t.archived_at == null,
+  );
+
+  // 완료된 항목을 한꺼번에 보관함으로 넘기기
+  const bulkArchive = async (listType: WorkListType) => {
+    const targets = tasks.filter(
+      (t) => t.list_type === listType && t.archived_at == null && t.status === "완료",
+    );
+    if (targets.length === 0) {
+      toast.info("보관할 완료 항목이 없습니다.");
+      return;
+    }
+    if (!confirm(`완료된 ${targets.length}건을 보관함으로 옮길까요?`)) return;
+    const ids = targets.map((t) => t.id);
+    const archivedAt = new Date().toISOString();
+    const { error: archErr } = await supabase
+      .from("work_status_tasks")
+      .update({ archived_at: archivedAt })
+      .in("id", ids);
+    if (archErr) {
+      toast.error("보관에 실패했습니다.");
+      return;
+    }
+    setTasks((prev) =>
+      prev.map((t) => (ids.includes(t.id) ? { ...t, archived_at: archivedAt } : t)),
+    );
+    toast.success(`${targets.length}건을 보관했습니다.`);
+  };
+  const deadlineDoneCount = deadlineTasks.filter((t) => t.status === "완료").length;
+  const instructionDoneCount = instructionTasks.filter((t) => t.status === "완료").length;
 
   // ── 위젯 정의 (WidgetGrid 에서 드래그로 재배치) ─────────────────────
   const widgets: Widget[] = [];
@@ -433,12 +467,25 @@ export default function WorkStatusDetailPage() {
     node: (
       <Card className="h-full border-border/70 bg-card/85">
         <CardHeader className="pb-2 pl-8">
-          <CardTitle className="text-sm">
-            마감기한 업무리스트{" "}
-            <span className="text-xs font-normal text-muted-foreground">
-              ({deadlineTasks.length})
-            </span>
-          </CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="text-sm">
+              마감기한 업무리스트{" "}
+              <span className="text-xs font-normal text-muted-foreground">
+                ({deadlineTasks.length})
+              </span>
+            </CardTitle>
+            {canEdit && deadlineDoneCount > 0 ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1.5 text-xs text-muted-foreground"
+                onClick={() => void bulkArchive("deadline")}
+              >
+                <Archive className="h-3.5 w-3.5" />
+                완료 {deadlineDoneCount}건 보관
+              </Button>
+            ) : null}
+          </div>
         </CardHeader>
         <CardContent className="space-y-2">
           {canEdit ? (
@@ -472,6 +519,7 @@ export default function WorkStatusDetailPage() {
                 task={task}
                 canEdit={canEdit}
                 onDeleted={removeTaskLocal}
+                onArchived={removeTaskLocal}
               />
             ))
           )}
@@ -486,12 +534,25 @@ export default function WorkStatusDetailPage() {
     node: (
       <Card className="h-full border-border/70 bg-card/85">
         <CardHeader className="pb-2 pl-8">
-          <CardTitle className="text-sm">
-            요청사항 업무{" "}
-            <span className="text-xs font-normal text-muted-foreground">
-              ({instructionTasks.length}) · 받은 요청
-            </span>
-          </CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="text-sm">
+              요청사항 업무{" "}
+              <span className="text-xs font-normal text-muted-foreground">
+                ({instructionTasks.length}) · 받은 요청
+              </span>
+            </CardTitle>
+            {canEdit && instructionDoneCount > 0 ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1.5 text-xs text-muted-foreground"
+                onClick={() => void bulkArchive("instruction")}
+              >
+                <Archive className="h-3.5 w-3.5" />
+                완료 {instructionDoneCount}건 보관
+              </Button>
+            ) : null}
+          </div>
         </CardHeader>
         <CardContent className="space-y-2">
           {instructionTasks.length === 0 ? (
@@ -505,6 +566,7 @@ export default function WorkStatusDetailPage() {
                 task={task}
                 canEdit={canEdit}
                 onDeleted={removeTaskLocal}
+                onArchived={removeTaskLocal}
               />
             ))
           )}
@@ -597,6 +659,14 @@ export default function WorkStatusDetailPage() {
           canEdit
             ? "고정업무·마감업무·요청사항과 개인 일정을 관리하고, 팀과 정보를 공유하세요. 카드는 드래그로 자유롭게 배치할 수 있습니다."
             : "다른 직원의 업무는 열람만 가능합니다. (추가·수정은 본인 또는 관리자만)"
+        }
+        actions={
+          <Button variant="outline" size="sm" className="gap-1.5" asChild>
+            <Link href={`/dashboard/work-status/${employeeId}/archive`}>
+              <Archive className="h-4 w-4" />
+              지난 업무 보관함
+            </Link>
+          </Button>
         }
       />
 
