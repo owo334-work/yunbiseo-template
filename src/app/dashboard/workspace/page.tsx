@@ -44,6 +44,14 @@ const LIST_SHORT: Record<WorkListType, string> = WORK_LIST_TYPES.reduce(
 
 const PREVIEW_LIMIT = 4;
 
+// 진척도 게이지 색상
+function progressBarTone(value: number) {
+  if (value >= 100) return "bg-emerald-500";
+  if (value >= 50) return "bg-sky-500";
+  if (value > 0) return "bg-amber-500";
+  return "bg-slate-300";
+}
+
 type EmployeeWithTasks = Employee & {
   tasks: WorkStatusTask[];
   total: number;
@@ -113,7 +121,13 @@ export default function WorkspacePage() {
 
   const employeesWithTasks: EmployeeWithTasks[] = useMemo(() => {
     return employees.map((employee) => {
-      const own = tasks.filter((t) => t.employee_id === employee.id);
+      // 메인 화면 직원 카드에는 마감기한·요청사항 업무만 집계 (고정업무 제외, 보관 제외)
+      const own = tasks.filter(
+        (t) =>
+          t.employee_id === employee.id &&
+          (t.list_type === "deadline" || t.list_type === "instruction") &&
+          t.archived_at == null,
+      );
       return {
         ...employee,
         tasks: own,
@@ -281,7 +295,7 @@ export default function WorkspacePage() {
           }
         />
       ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filtered.map((employee) => {
             const preview = [...employee.tasks]
               .filter((t) => t.status !== "완료")
@@ -319,28 +333,44 @@ export default function WorkspacePage() {
                       ))}
                     </div>
 
-                    <div className="space-y-1.5 border-t border-border/60 pt-3">
+                    <div className="space-y-2 border-t border-border/60 pt-3">
                       {preview.length === 0 ? (
                         <p className="text-xs text-muted-foreground">
                           {employee.total === 0
-                            ? "등록된 업무가 없습니다."
+                            ? "등록된 마감·요청 업무가 없습니다."
                             : "진행 중이거나 대기 중인 업무가 없습니다."}
                         </p>
                       ) : (
                         <>
-                          {preview.map((task) => (
-                            <div key={task.id} className="flex items-center gap-2">
-                              <span
-                                className={`inline-flex shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${WORK_STATUS_STYLES[task.status]}`}
-                              >
-                                {task.status}
-                              </span>
-                              <span className="truncate text-xs text-foreground">{task.title}</span>
-                              <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
-                                {LIST_SHORT[task.list_type]}
-                              </span>
-                            </div>
-                          ))}
+                          {preview.map((task) => {
+                            const progress = task.progress ?? 0;
+                            return (
+                              <div key={task.id} className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className={`inline-flex shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${WORK_STATUS_STYLES[task.status]}`}
+                                  >
+                                    {task.status}
+                                  </span>
+                                  <span className="truncate text-xs text-foreground">{task.title}</span>
+                                  <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
+                                    {LIST_SHORT[task.list_type]}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
+                                    <div
+                                      className={`h-full rounded-full ${progressBarTone(progress)}`}
+                                      style={{ width: `${progress}%` }}
+                                    />
+                                  </div>
+                                  <span className="w-7 shrink-0 text-right text-[10px] font-medium text-muted-foreground">
+                                    {progress}%
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
                           {remaining > 0 ? (
                             <p className="pt-0.5 text-[11px] text-muted-foreground">
                               외 {remaining}건 더보기
