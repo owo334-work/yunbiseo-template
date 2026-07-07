@@ -23,9 +23,9 @@ const MIN_SPAN = 3; // 최소 가로 (12칸 중 3 = 1/4)
 
 // 컨테이너 폭 → 기본 가로 칸 수(12칸 기준). 폭이 줄면 카드가 알아서 넓어진다.
 function defaultSpan(width: number): number {
-  if (width >= 1600) return 3; // 4개/줄
-  if (width >= 1100) return 4; // 3개/줄
-  if (width >= 700) return 6; // 2개/줄
+  if (width >= 1280) return 3; // 4개/줄
+  if (width >= 920) return 4; // 3개/줄
+  if (width >= 620) return 6; // 2개/줄
   return 12; // 1개/줄
 }
 

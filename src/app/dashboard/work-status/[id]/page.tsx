@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, CalendarDays, Mail, Phone, Plus, Trash2 } from "lucide-react";
+import { Archive, CalendarDays, Mail, Phone } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -14,7 +14,6 @@ import {
 } from "@/components/page-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
 import type {
@@ -28,7 +27,6 @@ import type {
 import {
   canAssignRequestByPosition,
   DEFAULT_REQUEST_MIN_POSITION,
-  FIXED_LIST_TYPES,
   REQUEST_MIN_POSITION_KEY,
 } from "@/lib/work-status";
 
@@ -63,8 +61,7 @@ export default function WorkStatusDetailPage() {
     position: string | null;
   }>({ id: null, authUid: null, isAdmin: false, department: null, position: null });
 
-  // 고정업무 / 마감업무 입력창 상태
-  const [fixedInput, setFixedInput] = useState<Record<string, string>>({});
+  // 마감업무 입력창 상태
   const [dlTitle, setDlTitle] = useState("");
   const [dlDue, setDlDue] = useState("");
 
@@ -73,6 +70,7 @@ export default function WorkStatusDetailPage() {
   useEffect(() => {
     try {
       const s = localStorage.getItem("ws-assign-side");
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (s === "left" || s === "right") setAssignSide(s);
     } catch {
       /* ignore */
@@ -219,59 +217,6 @@ export default function WorkStatusDetailPage() {
   const canAssignRequests =
     me.isAdmin || canAssignRequestByPosition(me.position, minPosition);
 
-  // ── 고정업무 CRUD ─────────────────────────────────────────
-  const addFixed = async (listType: WorkListType) => {
-    const title = (fixedInput[listType] ?? "").trim();
-    if (!title) return;
-    const { data, error: insErr } = await supabase
-      .from("work_status_tasks")
-      .insert({
-        employee_id: employeeId,
-        list_type: listType,
-        title,
-        detail: null,
-        status: "미진행" as WorkStatusValue,
-        progress: 0,
-        due_date: null,
-        sort_order: 0,
-        created_by: me.authUid,
-      })
-      .select()
-      .single();
-    if (insErr) {
-      toast.error("추가에 실패했습니다. 권한이 있는지 확인해 주세요.");
-      return;
-    }
-    if (data) {
-      setTasks((prev) => [...prev, data as WorkStatusTask]);
-      setFixedInput((prev) => ({ ...prev, [listType]: "" }));
-    }
-  };
-
-  const toggleFixed = async (task: WorkStatusTask) => {
-    const next: WorkStatusValue = task.status === "완료" ? "미진행" : "완료";
-    setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: next } : t)));
-    const { error: updErr } = await supabase
-      .from("work_status_tasks")
-      .update({ status: next, progress: next === "완료" ? 100 : task.progress })
-      .eq("id", task.id);
-    if (updErr) {
-      toast.error("상태 변경에 실패했습니다.");
-      setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: task.status } : t)));
-    }
-  };
-
-  const deleteTask = async (task: WorkStatusTask) => {
-    if (!confirm(`'${task.title}' 업무를 삭제할까요?`)) return;
-    const prev = tasks;
-    setTasks((cur) => cur.filter((t) => t.id !== task.id));
-    const { error: delErr } = await supabase.from("work_status_tasks").delete().eq("id", task.id);
-    if (delErr) {
-      toast.error("삭제에 실패했습니다.");
-      setTasks(prev);
-    }
-  };
-
   const removeTaskLocal = (id: string) => setTasks((cur) => cur.filter((t) => t.id !== id));
 
   const addDeadline = async () => {
@@ -388,78 +333,6 @@ export default function WorkStatusDetailPage() {
       </Card>
     ),
   });
-
-  // 고정업무 (일간/주간/월간)
-  for (const list of FIXED_LIST_TYPES) {
-    const items = tasks.filter((t) => t.list_type === list.key);
-    widgets.push({
-      id: `fixed-${list.key}`,
-      node: (
-        <Card className="h-full border-border/70 bg-card/85">
-          <CardHeader className="pb-2 pl-8">
-            <CardTitle className="text-sm">{list.label}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1.5">
-            {items.length === 0 ? (
-              <p className="text-xs text-muted-foreground">등록된 고정업무가 없습니다.</p>
-            ) : (
-              items.map((task) => (
-                <div key={task.id} className="group flex items-center gap-2">
-                  <Checkbox
-                    checked={task.status === "완료"}
-                    onCheckedChange={() => void toggleFixed(task)}
-                    disabled={!canEdit}
-                  />
-                  <span
-                    className={`flex-1 text-sm ${
-                      task.status === "완료"
-                        ? "text-muted-foreground line-through"
-                        : "text-foreground"
-                    }`}
-                  >
-                    {task.title}
-                  </span>
-                  {canEdit ? (
-                    <button
-                      type="button"
-                      onClick={() => void deleteTask(task)}
-                      className="text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
-                      aria-label="삭제"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  ) : null}
-                </div>
-              ))
-            )}
-            {canEdit ? (
-              <div className="flex gap-1.5 pt-1">
-                <Input
-                  value={fixedInput[list.key] ?? ""}
-                  onChange={(e) =>
-                    setFixedInput((prev) => ({ ...prev, [list.key]: e.target.value }))
-                  }
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") void addFixed(list.key);
-                  }}
-                  placeholder="고정업무 추가"
-                  className="h-8 text-sm"
-                />
-                <Button
-                  size="icon"
-                  className="h-8 w-8 shrink-0"
-                  onClick={() => void addFixed(list.key)}
-                  aria-label="추가"
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
-      ),
-    });
-  }
 
   // 마감기한 업무
   widgets.push({
