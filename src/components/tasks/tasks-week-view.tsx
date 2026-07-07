@@ -18,7 +18,7 @@ import {
 import type { Task } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const WEEKDAY_LABELS = ["월", "화", "수", "목", "금", "토", "일"];
+const WEEKDAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 const MAX_TIMELINE_LANES = 3;
 
 function formatWeekdayLabel(index: number, dateISO: string, today: string) {

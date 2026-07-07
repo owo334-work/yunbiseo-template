@@ -11,12 +11,11 @@ export function addDaysISO(date: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** Monday-start week containing the given date (KST-agnostic, date string only). */
+/** Sunday-start week containing the given date (KST-agnostic, date string only). */
 export function startOfWeekISO(date: string): string {
   const d = new Date(`${date}T00:00:00`);
   const day = d.getDay();
-  const diff = (day + 6) % 7;
-  d.setDate(d.getDate() - diff);
+  d.setDate(d.getDate() - day);
   return d.toISOString().slice(0, 10);
 }
 

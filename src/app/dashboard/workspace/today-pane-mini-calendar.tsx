@@ -10,7 +10,7 @@ import {
 } from "@/components/calendar/calendar-utils";
 import { cn } from "@/lib/utils";
 
-const DAY_LABELS = ["월", "화", "수", "목", "금", "토", "일"];
+const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 
 export const TASK_DRAG_MIME = "application/x-yun-task-id";
 
@@ -122,8 +122,8 @@ export function TodayPaneMiniCalendar({
             key={label}
             className={cn(
               "py-0.5 text-[10px] font-medium text-muted-foreground",
-              i === 5 && "text-blue-500",
-              i === 6 && "text-red-500"
+              i === 0 && "text-red-500",
+              i === 6 && "text-blue-500"
             )}
           >
             {label}

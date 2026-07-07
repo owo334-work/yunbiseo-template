@@ -31,8 +31,8 @@ export function CalendarEvent({ schedule, compact, short, onClick, startAtOverri
       <div
         role="button"
         onClick={handleClick}
-        className="w-full rounded px-1 py-0.5 text-left text-[10px] leading-tight transition-opacity hover:opacity-80 sm:text-xs"
-        style={{ backgroundColor: toPastel(categoryColor), color: categoryColor }}
+        className="w-full rounded px-1 py-0.5 text-left text-[10px] leading-tight text-foreground transition-opacity hover:opacity-80 sm:text-xs"
+        style={{ backgroundColor: toPastel(categoryColor) }}
       >
         <p className="break-words whitespace-normal">
           {startTime && <span className="text-[9px] opacity-80 sm:text-[10px]">{startTime} </span>}
@@ -47,10 +47,10 @@ export function CalendarEvent({ schedule, compact, short, onClick, startAtOverri
       role="button"
       onClick={handleClick}
       className={cn(
-        "h-full w-full overflow-hidden rounded-md border text-left text-xs shadow-sm transition-opacity hover:opacity-90",
+        "h-full w-full overflow-hidden rounded-md border text-left text-xs text-foreground shadow-sm transition-opacity hover:opacity-90",
         short ? "flex items-center gap-1 px-1.5 py-0" : "px-2 py-1"
       )}
-      style={{ backgroundColor: toPastel(categoryColor), borderColor: toPastel(categoryColor, 0.3), color: categoryColor }}
+      style={{ backgroundColor: toPastel(categoryColor), borderColor: toPastel(categoryColor, 0.3) }}
     >
       <p className={cn(
         "font-medium",

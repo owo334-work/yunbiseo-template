@@ -13,7 +13,10 @@ import {
   toPastel,
 } from "./calendar-utils";
 
-const DAY_LABELS = ["월", "화", "수", "목", "금", "토", "일"];
+const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
+
+// 주말(일·토) 칸은 좁게: 일(0)·토(6) 열을 0.6fr, 평일은 1fr
+const WEEKEND_GRID = "minmax(0,0.6fr) repeat(5, minmax(0,1fr)) minmax(0,0.6fr)";
 
 // 날짜칸 상단에 고정 표시되는 마커 (연차/월차, 생일 등 — 업무 일정과 분리)
 export type DayMarker = {
@@ -66,14 +69,14 @@ export function CalendarMonthView({
   return (
     <div className="flex flex-col rounded-lg border">
       {/* Day-of-week header */}
-      <div className="grid grid-cols-7 border-b">
+      <div className="grid border-b" style={{ gridTemplateColumns: WEEKEND_GRID }}>
         {DAY_LABELS.map((label, i) => (
           <div
             key={label}
             className={cn(
               "py-2 text-center text-xs font-medium text-muted-foreground",
-              i === 5 && "text-blue-500",
-              i === 6 && "text-red-500"
+              i === 0 && "text-red-500",
+              i === 6 && "text-blue-500"
             )}
           >
             {label}
@@ -82,7 +85,7 @@ export function CalendarMonthView({
       </div>
 
       {/* Grid */}
-      <div className="grid grid-cols-7">
+      <div className="grid" style={{ gridTemplateColumns: WEEKEND_GRID }}>
         {grid.map((day, idx) => {
           const key = format(day, "yyyy-MM-dd");
           const events = eventsByDay.get(key) ?? [];
@@ -114,21 +117,18 @@ export function CalendarMonthView({
                 {format(day, "d")}
               </span>
 
-              {/* 연차/월차·생일 마커 (상단 고정, 업무 일정과 분리) */}
+              {/* 연차/월차·생일 마커 (상단 고정, 업무 일정과 분리) — 글자수만큼만, 여러 명은 나란히 */}
               {markers.length > 0 ? (
-                <div className="mt-0.5 flex flex-col gap-0.5">
+                <div className="mt-0.5 flex flex-wrap gap-0.5">
                   {markers.map((m) => (
-                    <div
+                    <span
                       key={m.id}
-                      className="truncate rounded px-1 py-0.5 text-[9px] font-medium leading-tight sm:text-[10px]"
-                      style={{
-                        backgroundColor: toPastel(m.color ?? "#6b7280"),
-                        color: m.color ?? "#6b7280",
-                      }}
+                      className="inline-flex max-w-full items-center truncate rounded px-1 py-0.5 text-[9px] font-medium leading-tight text-foreground sm:text-[10px]"
+                      style={{ backgroundColor: toPastel(m.color ?? "#6b7280") }}
                     >
                       {m.emoji ? `${m.emoji} ` : ""}
                       {m.label}
-                    </div>
+                    </span>
                   ))}
                 </div>
               ) : null}

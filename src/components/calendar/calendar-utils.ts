@@ -23,7 +23,8 @@ import { ko } from "date-fns/locale";
 import type { Schedule } from "@/lib/types";
 
 export type ViewMode = "month" | "week" | "day";
-const WEEK_STARTS_ON = 1;
+// 0 = 일요일 시작 (일·월·화·수·목·금·토)
+const WEEK_STARTS_ON = 0;
 
 export {
   format,
