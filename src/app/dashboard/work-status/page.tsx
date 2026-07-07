@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { ClipboardList, ListChecks, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
@@ -11,8 +10,6 @@ import {
   PageHeader,
   PageShell,
   PageToolbar,
-  StatCard,
-  StatsGrid,
 } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -102,23 +99,12 @@ export default function WorkStatusListPage() {
     );
   });
 
-  const totalTasks = tasks.length;
-  const inProgress = tasks.filter((t) => t.status === "진행중").length;
-  const done = tasks.filter((t) => t.status === "완료").length;
-
   return (
     <PageShell>
       <PageHeader
         title="업무현황"
         description="직원을 선택하면 일간·주간·월간 업무리스트와 요청사항, 진행상태를 확인할 수 있습니다."
       />
-
-      <StatsGrid>
-        <StatCard label="전체 직원" value={`${employees.length}명`} icon={Users} />
-        <StatCard label="등록된 업무" value={`${totalTasks}건`} icon={ClipboardList} />
-        <StatCard label="진행중" value={`${inProgress}건`} icon={ListChecks} tone="info" />
-        <StatCard label="완료" value={`${done}건`} icon={ListChecks} tone="success" />
-      </StatsGrid>
 
       {tableMissing ? (
         <div className="rounded-[1.5rem] border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-800">
