@@ -345,29 +345,27 @@ export default function WorkspacePage() {
                           {preview.map((task) => {
                             const progress = task.progress ?? 0;
                             return (
-                              <div key={task.id} className="space-y-1">
-                                <div className="flex items-center gap-2">
-                                  <span
-                                    className={`inline-flex shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${WORK_STATUS_STYLES[task.status]}`}
-                                  >
-                                    {task.status}
-                                  </span>
-                                  <span className="truncate text-xs text-foreground">{task.title}</span>
-                                  <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
-                                    {LIST_SHORT[task.list_type]}
-                                  </span>
+                              <div key={task.id} className="flex items-center gap-2">
+                                <span
+                                  className={`inline-flex shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${WORK_STATUS_STYLES[task.status]}`}
+                                >
+                                  {task.status}
+                                </span>
+                                <span className="min-w-0 flex-1 truncate text-xs text-foreground">
+                                  {task.title}
+                                </span>
+                                <div className="h-1.5 w-14 shrink-0 overflow-hidden rounded-full bg-muted sm:w-16">
+                                  <div
+                                    className={`h-full rounded-full ${progressBarTone(progress)}`}
+                                    style={{ width: `${progress}%` }}
+                                  />
                                 </div>
-                                <div className="flex items-center gap-1.5">
-                                  <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
-                                    <div
-                                      className={`h-full rounded-full ${progressBarTone(progress)}`}
-                                      style={{ width: `${progress}%` }}
-                                    />
-                                  </div>
-                                  <span className="w-7 shrink-0 text-right text-[10px] font-medium text-muted-foreground">
-                                    {progress}%
-                                  </span>
-                                </div>
+                                <span className="w-8 shrink-0 text-right text-[10px] font-medium text-muted-foreground">
+                                  {progress}%
+                                </span>
+                                <span className="w-12 shrink-0 whitespace-nowrap text-right text-[10px] text-muted-foreground">
+                                  {LIST_SHORT[task.list_type]}
+                                </span>
                               </div>
                             );
                           })}
