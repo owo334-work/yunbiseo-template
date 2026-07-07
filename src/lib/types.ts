@@ -16,6 +16,7 @@ export interface Employee {
   phone: string | null;
   slack_id: string | null;
   hire_date: string | null;
+  birthday: string | null;
   login_id: string | null;
   auth_uid: string | null;
   focused_task_id?: string | null;
