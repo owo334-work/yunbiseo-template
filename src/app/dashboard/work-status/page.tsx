@@ -11,11 +11,13 @@ import {
   PageShell,
   PageToolbar,
 } from "@/components/page-shell";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { EmployeeOrderDialog } from "@/components/work-status/employee-order-dialog";
 import { createClient } from "@/lib/supabase/client";
 import type { Employee, WorkStatusTask } from "@/lib/types";
-import { WORK_STATUS_STYLES } from "@/lib/work-status";
+import { sortEmployeesForWork, WORK_STATUS_STYLES } from "@/lib/work-status";
 
 type EmployeeWithCounts = Employee & {
   total: number;
@@ -34,6 +36,8 @@ export default function WorkStatusListPage() {
   const [error, setError] = useState(false);
   const [tableMissing, setTableMissing] = useState(false);
   const [search, setSearch] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [orderOpen, setOrderOpen] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -56,7 +60,24 @@ export default function WorkStatusListPage() {
       return;
     }
 
-    setEmployees((employeeRes.data ?? []).filter((e) => e.is_active !== false));
+    setEmployees(
+      sortEmployeesForWork((employeeRes.data ?? []).filter((e) => e.is_active !== false)),
+    );
+
+    // 로그인 사용자가 관리자면 순서 편집을 허용한다.
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser();
+    if (authUser) {
+      const { data: meRow } = await supabase
+        .from("employees")
+        .select("employee_type")
+        .eq("auth_uid", authUser.id)
+        .maybeSingle();
+      setIsAdmin(meRow?.employee_type === "관리자");
+    } else {
+      setIsAdmin(false);
+    }
 
     if (taskRes.error) {
       // 마이그레이션(work_status_tasks)이 아직 적용되지 않은 경우
@@ -122,9 +143,23 @@ export default function WorkStatusListPage() {
             onChange={(event) => setSearch(event.target.value)}
             className="w-full sm:max-w-sm"
           />
-          <span className="text-sm text-muted-foreground">{filtered.length}명 표시 중</span>
+          <div className="flex items-center gap-3">
+            {isAdmin ? (
+              <Button variant="outline" size="sm" onClick={() => setOrderOpen(true)}>
+                순서 편집
+              </Button>
+            ) : null}
+            <span className="text-sm text-muted-foreground">{filtered.length}명 표시 중</span>
+          </div>
         </div>
       </PageToolbar>
+
+      <EmployeeOrderDialog
+        open={orderOpen}
+        onOpenChange={setOrderOpen}
+        employees={employees}
+        onSaved={() => void fetchData()}
+      />
 
       {loading ? (
         <LoadingState title="업무현황을 불러오는 중입니다." />

@@ -8,6 +8,7 @@ export interface Employee {
   employee_type?: EmployeeType | null;
   is_finance?: boolean | null;
   is_active?: boolean | null;
+  sort_order?: number | null;
   failed_login_count?: number | null;
   failed_login_window_started_at?: string | null;
   last_failed_login_at?: string | null;

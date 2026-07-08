@@ -1,4 +1,4 @@
-import type { WorkListType, WorkStatusValue } from "@/lib/types";
+import type { Employee, WorkListType, WorkStatusValue } from "@/lib/types";
 
 // 업무현황에서 직원이 추가할 수 있는 업무 리스트 종류
 export const WORK_LIST_TYPES: { key: WorkListType; label: string; short: string }[] = [
@@ -51,6 +51,33 @@ export const REQUEST_MIN_POSITION_KEY = "request_assign_min_position";
 export function positionRank(position?: string | null): number {
   const found = POSITION_RANKS.find((p) => p.name === (position ?? "").trim());
   return found ? found.rank : 0;
+}
+
+// ── 업무현황/워크스페이스 직원 카드 정렬 ────────────────────────────────
+// 기본 정렬: 직급 높은 순 → 같은 직급은 이름 가나다 순.
+// sort_order(수동 순서)가 지정된 직원은 그 값을 우선 사용한다.
+type SortableEmployee = Pick<Employee, "name" | "position" | "sort_order">;
+
+export function compareEmployeesForWork(a: SortableEmployee, b: SortableEmployee): number {
+  const ao = a.sort_order ?? null;
+  const bo = b.sort_order ?? null;
+  // 둘 다 수동 순서가 있으면 그 값으로 비교
+  if (ao != null && bo != null) {
+    if (ao !== bo) return ao - bo;
+  } else if (ao != null) {
+    return -1; // 수동 순서가 있는 직원이 앞
+  } else if (bo != null) {
+    return 1;
+  }
+  // 직급 높은 순 (rank 큰 값이 위)
+  const rankDiff = positionRank(b.position) - positionRank(a.position);
+  if (rankDiff !== 0) return rankDiff;
+  // 같은 직급은 이름 가나다 순
+  return (a.name ?? "").localeCompare(b.name ?? "", "ko");
+}
+
+export function sortEmployeesForWork<T extends SortableEmployee>(employees: T[]): T[] {
+  return [...employees].sort(compareEmployeesForWork);
 }
 
 // 기준 직책 이상인지 (관리자는 항상 true 로 별도 처리)

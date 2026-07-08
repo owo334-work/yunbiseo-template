@@ -40,7 +40,7 @@ import type {
   WorkStatusTask,
   WorkStatusValue,
 } from "@/lib/types";
-import { WORK_LIST_TYPES, WORK_STATUS_STYLES } from "@/lib/work-status";
+import { sortEmployeesForWork, WORK_LIST_TYPES, WORK_STATUS_STYLES } from "@/lib/work-status";
 import {
   colorForDepartment,
   DEPARTMENT_COLORS_KEY,
@@ -129,7 +129,9 @@ export default function WorkspacePage() {
       return;
     }
 
-    setEmployees((employeeRes.data ?? []).filter((e) => e.is_active !== false));
+    setEmployees(
+      sortEmployeesForWork((employeeRes.data ?? []).filter((e) => e.is_active !== false)),
+    );
     setSchedules(scheduleRes.error ? [] : ((scheduleRes.data ?? []) as Schedule[]));
     setDeptColors(parseDepartmentColors(deptColorRes.data?.value));
     const loadedCats = catRes.error ? [] : ((catRes.data ?? []) as ScheduleCategoryItem[]);
