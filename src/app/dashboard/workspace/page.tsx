@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
@@ -100,6 +100,17 @@ export default function WorkspacePage() {
   const [error, setError] = useState(false);
   const [tableMissing, setTableMissing] = useState(false);
   const [search, setSearch] = useState("");
+  // 업무현황 미리보기 '펼치기' 상태 (직원 id 집합)
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  const toggleExpanded = useCallback((employeeId: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(employeeId)) next.delete(employeeId);
+      else next.add(employeeId);
+      return next;
+    });
+  }, []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -440,11 +451,12 @@ export default function WorkspacePage() {
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filtered.map((employee) => {
-            const preview = [...employee.tasks]
+            const openTasks = [...employee.tasks]
               .filter((t) => t.status !== "완료")
-              .sort((a, b) => STATUS_PRIORITY[a.status] - STATUS_PRIORITY[b.status])
-              .slice(0, PREVIEW_LIMIT);
-            const remaining = employee.tasks.filter((t) => t.status !== "완료").length - preview.length;
+              .sort((a, b) => STATUS_PRIORITY[a.status] - STATUS_PRIORITY[b.status]);
+            const isExpanded = expandedIds.has(employee.id);
+            const preview = isExpanded ? openTasks : openTasks.slice(0, PREVIEW_LIMIT);
+            const hidden = openTasks.length - preview.length;
 
             return (
               <Link key={employee.id} href={`/dashboard/work-status/${employee.id}`}>
@@ -512,10 +524,26 @@ export default function WorkspacePage() {
                               </div>
                             );
                           })}
-                          {remaining > 0 ? (
-                            <p className="pt-0.5 text-[11px] text-muted-foreground">
-                              외 {remaining}건 더보기
-                            </p>
+                          {isExpanded || hidden > 0 ? (
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                toggleExpanded(employee.id);
+                              }}
+                              className="inline-flex items-center gap-0.5 pt-0.5 text-[11px] font-medium text-primary transition-colors hover:text-primary/80"
+                            >
+                              {isExpanded ? (
+                                <>
+                                  접기 <ChevronUp className="h-3 w-3" />
+                                </>
+                              ) : (
+                                <>
+                                  외 {hidden}건 더보기 <ChevronDown className="h-3 w-3" />
+                                </>
+                              )}
+                            </button>
                           ) : null}
                         </>
                       )}
