@@ -32,6 +32,57 @@ function defaultSpan(width: number): number {
   return 24; // 1개/줄
 }
 
+// ── 메이슨리 배치 계산 ────────────────────────────────────────────────
+// 각 위젯을 순서대로, 지금까지 가장 낮게 채워진 열 자리에 떨어뜨려 세로 여백을 없앤다.
+// (같은 줄에서 제일 긴 위젯 높이에 나머지가 끌려가는 그리드 여백 문제 해결)
+type WidgetPos = { x: number; y: number; w: number };
+function packMasonry(
+  order: string[],
+  present: Set<string>,
+  sizes: SizeMap,
+  resizing: { id: string; w: number; h: number } | null,
+  width: number,
+  heights: Record<string, number>,
+): { pos: Record<string, WidgetPos>; containerHeight: number } {
+  const cols = TOTAL_COLS;
+  const colWidth = width > 0 ? (width - GRID_GAP * (cols - 1)) / cols : 0;
+  const colBottoms = new Array<number>(cols).fill(0);
+  const pos: Record<string, WidgetPos> = {};
+
+  for (const id of order) {
+    if (!present.has(id)) continue;
+    const live = resizing && resizing.id === id ? resizing : null;
+    const spanBase = live?.w ?? sizes[id]?.w ?? defaultSpan(width);
+    const span = Math.min(cols, Math.max(MIN_SPAN, spanBase));
+    const explicitH = live?.h ?? sizes[id]?.h;
+    const h = explicitH ?? heights[id] ?? MIN_HEIGHT;
+
+    // span 폭이 들어갈 수 있는 시작 열 중 가장 낮은(위쪽) 자리를 찾는다.
+    let bestCol = 0;
+    let bestY = Infinity;
+    for (let c = 0; c <= cols - span; c++) {
+      let y = 0;
+      for (let k = c; k < c + span; k++) y = Math.max(y, colBottoms[k]);
+      if (y < bestY - 0.5) {
+        bestY = y;
+        bestCol = c;
+      }
+    }
+    if (!Number.isFinite(bestY)) bestY = 0;
+
+    pos[id] = {
+      x: bestCol * (colWidth + GRID_GAP),
+      y: bestY,
+      w: span * colWidth + (span - 1) * GRID_GAP,
+    };
+    const bottom = bestY + h + GRID_GAP;
+    for (let k = bestCol; k < bestCol + span; k++) colBottoms[k] = bottom;
+  }
+
+  const containerHeight = Math.max(0, ...colBottoms.map((b) => b - GRID_GAP));
+  return { pos, containerHeight };
+}
+
 // 저장된 순서와 현재 위젯 목록을 정합화한다.
 function reconcile(saved: string[], widgets: Widget[]): string[] {
   const ids = widgets.map((w) => w.id);
@@ -61,6 +112,32 @@ export function WidgetGrid({
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(1200);
+
+  // 위젯별 실제 렌더 높이(px) — 메이슨리 세로 배치 계산용
+  const [heights, setHeights] = useState<Record<string, number>>({});
+  const itemRefs = useRef<Map<string, HTMLElement>>(new Map());
+  const roRef = useRef<ResizeObserver | null>(null);
+  const refCbCache = useRef<Map<string, (el: HTMLDivElement | null) => void>>(new Map());
+
+  // id별로 안정된 ref 콜백을 돌려준다(렌더마다 새로 만들지 않아 관찰 churn 방지).
+  const getMeasureRef = (id: string) => {
+    let cb = refCbCache.current.get(id);
+    if (!cb) {
+      cb = (el: HTMLDivElement | null) => {
+        const prev = itemRefs.current.get(id);
+        if (prev && prev !== el) roRef.current?.unobserve(prev);
+        if (el) {
+          el.dataset.wid = id;
+          itemRefs.current.set(id, el);
+          roRef.current?.observe(el);
+        } else {
+          itemRefs.current.delete(id);
+        }
+      };
+      refCbCache.current.set(id, cb);
+    }
+    return cb;
+  };
 
   // 리사이즈 진행 상태 (드래그 중인 위젯의 임시 크기)
   const resizeRef = useRef<{
@@ -127,6 +204,34 @@ export function WidgetGrid({
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
+  }, []);
+
+  // 각 위젯의 높이를 관찰해 메이슨리 배치에 반영
+  useLayoutEffect(() => {
+    const ro = new ResizeObserver((entries) => {
+      setHeights((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        for (const entry of entries) {
+          const el = entry.target as HTMLElement;
+          const id = el.dataset.wid;
+          if (!id) continue;
+          const h = el.offsetHeight;
+          if (Math.abs((next[id] ?? 0) - h) > 0.5) {
+            next[id] = h;
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    });
+    roRef.current = ro;
+    // 최초 마운트 시 이미 등록된 위젯들을 관찰
+    itemRefs.current.forEach((el) => ro.observe(el));
+    return () => {
+      ro.disconnect();
+      roRef.current = null;
+    };
   }, []);
 
   const persistOrder = useCallback(
@@ -238,6 +343,15 @@ export function WidgetGrid({
   const byId = new Map(widgets.map((w) => [w.id, w] as const));
   const ordered = order.map((id) => byId.get(id)).filter(Boolean) as Widget[];
 
+  const { pos, containerHeight } = packMasonry(
+    order,
+    new Set(byId.keys()),
+    sizes,
+    resizing,
+    width,
+    heights,
+  );
+
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2">
@@ -256,15 +370,12 @@ export function WidgetGrid({
         </button>
       </div>
 
-      <div
-        ref={containerRef}
-        className="grid items-start gap-4"
-        style={{ gridTemplateColumns: `repeat(${TOTAL_COLS}, minmax(0, 1fr))` }}
-      >
+      <div ref={containerRef} className="relative" style={{ height: `${containerHeight}px` }}>
         {ordered.map((w) => {
           const live = resizing && resizing.id === w.id ? resizing : null;
-          const span = spanOf(w.id);
-          const height = live?.h ?? sizes[w.id]?.h;
+          const p = pos[w.id];
+          if (!p) return null;
+          const explicitH = live?.h ?? sizes[w.id]?.h;
           return (
             <div
               key={w.id}
@@ -275,15 +386,21 @@ export function WidgetGrid({
               }}
               onDrop={() => handleDrop(w.id)}
               style={{
-                gridColumn: `span ${span} / span ${span}`,
-                height: height ? `${height}px` : undefined,
+                position: "absolute",
+                left: 0,
+                top: 0,
+                transform: `translate(${p.x}px, ${p.y}px)`,
+                width: `${p.w}px`,
+                height: explicitH ? `${explicitH}px` : undefined,
               }}
-              className={`group/widget relative min-w-0 overflow-hidden rounded-xl transition-shadow ${
+              className={`group/widget overflow-hidden rounded-xl ${
+                live ? "" : "transition-transform duration-150 ease-out"
+              } ${
                 overId === w.id && dragId !== w.id
                   ? "ring-2 ring-primary/50 ring-offset-2 ring-offset-background"
                   : ""
               } ${dragId === w.id ? "opacity-40" : ""} ${
-                live ? "ring-2 ring-primary/60" : ""
+                live ? "z-20 ring-2 ring-primary/60" : ""
               }`}
             >
               {/* 이동 손잡이 */}
@@ -301,8 +418,10 @@ export function WidgetGrid({
                 <GripVertical className="h-4 w-4" />
               </button>
 
-              {/* 내용 (높이 지정 시 내부 스크롤) */}
-              <div className={height ? "h-full overflow-auto" : ""}>{w.node}</div>
+              {/* 내용 (높이 지정 시 내부 스크롤). 이 래퍼의 실제 높이를 관찰해 세로 배치에 사용 */}
+              <div ref={getMeasureRef(w.id)} className={explicitH ? "h-full overflow-auto" : ""}>
+                {w.node}
+              </div>
 
               {/* 리사이즈 중 크기 표시 */}
               {live ? (
