@@ -12,21 +12,24 @@ import {
 
 export type Widget = { id: string; node: ReactNode };
 
-// 위젯별 크기: w=가로 칸 수(12칸 기준, MIN_SPAN~12), h=세로 픽셀(없으면 내용 높이 자동)
+// 위젯별 크기: w=가로 칸 수(TOTAL_COLS 기준, MIN_SPAN~TOTAL_COLS), h=세로 픽셀(없으면 내용 높이 자동)
 type WidgetSize = { w: number; h?: number };
 type SizeMap = Record<string, WidgetSize>;
 
 const GRID_GAP = 16; // gap-4
 const MIN_HEIGHT = 140;
-const TOTAL_COLS = 12; // 12칸 그리드 (가로 조절을 촘촘하게)
-const MIN_SPAN = 3; // 최소 가로 (12칸 중 3 = 1/4)
+const TOTAL_COLS = 24; // 24칸 그리드 (가로 조절을 더 촘촘하게 — 1/24 단위)
+const MIN_SPAN = 4; // 최소 가로 (24칸 중 4 = 1/6 → 한 줄에 최대 6개)
 
-// 컨테이너 폭 → 기본 가로 칸 수(12칸 기준). 폭이 줄면 카드가 알아서 넓어진다.
+// 저장된 크기의 기준 칸수 전환 이력 (12칸 → 24칸). 값이 바뀌면 자동 환산한다.
+const SIZE_SCALE_VERSION = 2;
+
+// 컨테이너 폭 → 기본 가로 칸 수(TOTAL_COLS 기준). 폭이 줄면 카드가 알아서 넓어진다.
 function defaultSpan(width: number): number {
-  if (width >= 1600) return 3; // 4개/줄
-  if (width >= 1100) return 4; // 3개/줄
-  if (width >= 700) return 6; // 2개/줄
-  return 12; // 1개/줄
+  if (width >= 1600) return 6; // 4개/줄
+  if (width >= 1100) return 8; // 3개/줄
+  if (width >= 700) return 12; // 2개/줄
+  return 24; // 1개/줄
 }
 
 // 저장된 순서와 현재 위젯 목록을 정합화한다.
@@ -48,6 +51,7 @@ export function WidgetGrid({
 }) {
   const orderKey = `${storageKey}:order`;
   const sizeKey = `${storageKey}:size`;
+  const sizeVersionKey = `${storageKey}:sizeVersion`;
 
   const [order, setOrder] = useState<string[]>(() => widgets.map((w) => w.id));
   const [sizes, setSizes] = useState<SizeMap>({});
@@ -78,6 +82,20 @@ export function WidgetGrid({
       if (rawOrder) savedOrder = JSON.parse(rawOrder) as string[];
       const rawSize = localStorage.getItem(sizeKey);
       if (rawSize) savedSizes = JSON.parse(rawSize) as SizeMap;
+
+      // 기준 칸수가 바뀌었으면(예: 12→24) 저장된 가로 값을 비례 환산해 배치를 유지한다.
+      const savedVersion = Number(localStorage.getItem(sizeVersionKey) || "1");
+      if (savedVersion < SIZE_SCALE_VERSION && Object.keys(savedSizes).length > 0) {
+        const factor = 2; // 12칸 → 24칸
+        savedSizes = Object.fromEntries(
+          Object.entries(savedSizes).map(([id, s]) => [
+            id,
+            { ...s, w: Math.min(TOTAL_COLS, Math.max(MIN_SPAN, s.w * factor)) },
+          ]),
+        );
+        localStorage.setItem(sizeKey, JSON.stringify(savedSizes));
+      }
+      localStorage.setItem(sizeVersionKey, String(SIZE_SCALE_VERSION));
     } catch {
       savedOrder = [];
       savedSizes = {};
@@ -289,7 +307,7 @@ export function WidgetGrid({
               {/* 리사이즈 중 크기 표시 */}
               {live ? (
                 <span className="pointer-events-none absolute bottom-1 right-6 z-10 rounded bg-primary/90 px-1.5 py-0.5 text-[10px] font-medium text-primary-foreground">
-                  가로 {live.w}/12
+                  가로 {live.w}/{TOTAL_COLS}
                 </span>
               ) : null}
 
