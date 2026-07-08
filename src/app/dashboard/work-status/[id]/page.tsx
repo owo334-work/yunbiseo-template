@@ -604,23 +604,6 @@ export default function WorkStatusDetailPage() {
     ),
   });
 
-  // 전 직원 공유
-  widgets.push({
-    id: "share-company",
-    node: (
-      <SharedNotesBoard
-        scope="company"
-        teamKey={null}
-        title="전 직원 공유"
-        description="회사 전체가 함께 보는 공유 정보란입니다."
-        notes={companyNotes}
-        currentEmployeeId={me.id}
-        isAdmin={me.isAdmin}
-        canPost={me.id != null}
-      />
-    ),
-  });
-
   // 팀 공유
   widgets.push({
     id: "share-team",
@@ -670,36 +653,45 @@ export default function WorkStatusDetailPage() {
         }
       />
 
-      {/* 내 대시보드에서 요청사항 배정 (대리 이상 또는 관리자) — 좌/우 사이드 칼럼 */}
-      <div className="flex flex-col gap-4 lg:flex-row">
-        {isOwner && canAssignRequests && assignSide === "left" ? (
+      {/* 사이드 칼럼: (권한 있으면) 요청사항 배정 + 그 아래 전 직원 공유 — 좌/우 위치 토글 */}
+      {(() => {
+        const sideColumn = (
           <RequestAsideColumn side={assignSide} onChangeSide={changeSide}>
-            <RequestAssignPanel
-              employees={allEmployees.map((e) => ({ id: e.id, name: e.name, department: e.department }))}
-              currentDepartment={me.department}
-              minPosition={minPosition}
-              authUid={me.authUid}
-              onAssigned={() => void fetchData()}
+            {isOwner && canAssignRequests ? (
+              <RequestAssignPanel
+                employees={allEmployees.map((e) => ({
+                  id: e.id,
+                  name: e.name,
+                  department: e.department,
+                }))}
+                currentDepartment={me.department}
+                minPosition={minPosition}
+                authUid={me.authUid}
+                onAssigned={() => void fetchData()}
+              />
+            ) : null}
+            <SharedNotesBoard
+              scope="company"
+              teamKey={null}
+              title="전 직원 공유"
+              description="회사 전체가 함께 보는 공유 정보란입니다."
+              notes={companyNotes}
+              currentEmployeeId={me.id}
+              isAdmin={me.isAdmin}
+              canPost={me.id != null}
             />
           </RequestAsideColumn>
-        ) : null}
-
-        <div className="min-w-0 flex-1">
-          <WidgetGrid storageKey={`ws-widget-order:${employeeId}`} widgets={widgets} />
-        </div>
-
-        {isOwner && canAssignRequests && assignSide === "right" ? (
-          <RequestAsideColumn side={assignSide} onChangeSide={changeSide}>
-            <RequestAssignPanel
-              employees={allEmployees.map((e) => ({ id: e.id, name: e.name, department: e.department }))}
-              currentDepartment={me.department}
-              minPosition={minPosition}
-              authUid={me.authUid}
-              onAssigned={() => void fetchData()}
-            />
-          </RequestAsideColumn>
-        ) : null}
-      </div>
+        );
+        return (
+          <div className="flex flex-col gap-4 lg:flex-row">
+            {assignSide === "left" ? sideColumn : null}
+            <div className="min-w-0 flex-1">
+              <WidgetGrid storageKey={`ws-widget-order:${employeeId}`} widgets={widgets} />
+            </div>
+            {assignSide === "right" ? sideColumn : null}
+          </div>
+        );
+      })()}
     </PageShell>
   );
 }
@@ -717,7 +709,7 @@ function RequestAsideColumn({
   return (
     <aside className="w-full lg:w-[340px] lg:shrink-0">
       <div className="mb-2 flex items-center gap-1 text-xs">
-        <span className="mr-auto text-muted-foreground">배정 패널 위치</span>
+        <span className="mr-auto text-muted-foreground">사이드 패널 위치</span>
         {(["left", "right"] as const).map((s) => (
           <button
             key={s}
@@ -734,7 +726,7 @@ function RequestAsideColumn({
           </button>
         ))}
       </div>
-      {children}
+      <div className="space-y-4">{children}</div>
     </aside>
   );
 }

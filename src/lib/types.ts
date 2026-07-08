@@ -67,6 +67,28 @@ export type SharedNoteInsert = Pick<
   "scope" | "team_key" | "content" | "author_employee_id"
 >;
 
+// 공유 정보란 반응(읽음/긍정/부정) — 한 사람당 한 글에 하나
+export type SharedNoteReactionKind = "read" | "up" | "down";
+
+export interface SharedNoteReaction {
+  id: string;
+  note_id: string;
+  employee_id: string;
+  kind: SharedNoteReactionKind;
+  created_at: string;
+}
+
+// 공유 정보란 댓글
+export interface SharedNoteComment {
+  id: string;
+  note_id: string;
+  content: string;
+  author_employee_id: string | null;
+  created_at: string;
+  updated_at: string;
+  author?: { id: string; name: string } | null;
+}
+
 export type WorkStatusTaskInsert = Omit<
   WorkStatusTask,
   "id" | "created_at" | "updated_at"
