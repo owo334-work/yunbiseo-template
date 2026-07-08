@@ -74,6 +74,60 @@ function autoPack(
   return pos;
 }
 
+// ── 겹침 해소: 방금 옮긴/키운 위젯(active)과 겹치는 이웃을 "겹친 만큼" 줄인다 ──
+// 밀어내면 다른 위젯 자리가 틀어지므로, 이웃의 반대쪽 모서리는 고정한 채 겹친 부분만
+// 축소한다(가로 겹침이면 폭, 세로 겹침이면 높이). 겹침이 작은 축을 골라 최소로 줄인다.
+function resolveOverlaps(
+  place: PlacementMap,
+  activeId: string,
+  colUnit: number,
+  heights: Record<string, number>,
+): PlacementMap {
+  const A = place[activeId];
+  if (!A) return place;
+  const hOf = (id: string) => place[id]?.h ?? heights[id] ?? MIN_HEIGHT;
+  const aLeft = A.x;
+  const aRight = A.x + A.w;
+  const aTop = A.y;
+  const aBottom = A.y + hOf(activeId);
+
+  const next: PlacementMap = { ...place };
+  for (const [id, B] of Object.entries(place)) {
+    if (id === activeId) continue;
+    const bLeft = B.x;
+    const bRight = B.x + B.w;
+    const bTop = B.y;
+    const bBottom = B.y + hOf(id);
+
+    const colOv = Math.min(aRight, bRight) - Math.max(aLeft, bLeft); // 칸
+    const yOv = Math.min(aBottom, bBottom) - Math.max(aTop, bTop); // px
+    if (colOv <= 0 || yOv <= 0) continue; // 안 겹치면 그대로
+
+    const nb: WidgetPlacement = { ...B };
+    if (colOv * colUnit <= yOv) {
+      // 가로로 겹침 → 겹친 열만큼 폭 축소(반대쪽 모서리 고정)
+      if (bLeft >= aLeft) {
+        const newX = Math.max(0, Math.min(aRight, bRight - MIN_SPAN));
+        nb.x = newX;
+        nb.w = Math.max(MIN_SPAN, bRight - newX);
+      } else {
+        nb.w = Math.max(MIN_SPAN, aLeft - bLeft);
+      }
+    } else {
+      // 세로로 겹침 → 겹친 높이만큼 축소(반대쪽 모서리 고정)
+      if (bTop >= aTop) {
+        const newY = Math.max(0, Math.min(aBottom, bBottom - MIN_HEIGHT));
+        nb.y = newY;
+        nb.h = Math.max(MIN_HEIGHT, bBottom - newY);
+      } else {
+        nb.h = Math.max(MIN_HEIGHT, aTop - bTop);
+      }
+    }
+    next[id] = nb;
+  }
+  return next;
+}
+
 // 저장된 순서와 현재 위젯 목록을 정합화한다.
 function reconcile(saved: string[], widgets: Widget[]): string[] {
   const ids = widgets.map((w) => w.id);
@@ -360,10 +414,11 @@ export function WidgetGrid({
       /* ignore */
     }
     const prev = placementsRef.current[r.id] ?? { x: moving.x, y: moving.y, w: r.span };
-    persistPlacements({
+    const merged = {
       ...placementsRef.current,
       [r.id]: { ...prev, x: moving.x, y: moving.y },
-    });
+    };
+    persistPlacements(resolveOverlaps(merged, r.id, unit, heights));
     moveRef.current = null;
     setMoving(null);
   };
@@ -416,10 +471,11 @@ export function WidgetGrid({
     const prev = placementsRef.current[r.id] ?? { x: 0, y: 0, w: resizing.w };
     // 폭이 커져 오른쪽을 넘으면 시작 열을 당겨준다.
     const x = clamp(prev.x, 0, TOTAL_COLS - resizing.w);
-    persistPlacements({
+    const merged = {
       ...placementsRef.current,
       [r.id]: { ...prev, x, w: resizing.w, h: resizing.h },
-    });
+    };
+    persistPlacements(resolveOverlaps(merged, r.id, unit, heights));
     resizeRef.current = null;
     setResizing(null);
   };
