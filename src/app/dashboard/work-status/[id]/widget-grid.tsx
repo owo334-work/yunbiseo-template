@@ -32,9 +32,10 @@ function defaultSpan(width: number): number {
   return 24; // 1개/줄
 }
 
-// ── 메이슨리 배치 계산 ────────────────────────────────────────────────
-// 각 위젯을 순서대로, 지금까지 가장 낮게 채워진 열 자리에 떨어뜨려 세로 여백을 없앤다.
-// (같은 줄에서 제일 긴 위젯 높이에 나머지가 끌려가는 그리드 여백 문제 해결)
+// ── 배치 계산 (순서 유지 + 세로 여백 축소) ─────────────────────────────
+// 위젯을 저장된 순서 그대로 좌→우로 놓되(폭이 넘치면 다음 줄로), 각 위젯의 세로
+// 위치는 "그 위젯이 차지하는 열들 바로 위"까지만 끌어올린다. 같은 줄에서 제일 긴
+// 위젯 때문에 나머지가 아래로 밀리던 여백이 사라진다(읽는 순서는 그대로).
 type WidgetPos = { x: number; y: number; w: number };
 function packMasonry(
   order: string[],
@@ -48,6 +49,7 @@ function packMasonry(
   const colWidth = width > 0 ? (width - GRID_GAP * (cols - 1)) / cols : 0;
   const colBottoms = new Array<number>(cols).fill(0);
   const pos: Record<string, WidgetPos> = {};
+  let cursor = 0; // 다음 위젯을 놓을 시작 열 (읽는 순서 유지)
 
   for (const id of order) {
     if (!present.has(id)) continue;
@@ -57,30 +59,36 @@ function packMasonry(
     const explicitH = live?.h ?? sizes[id]?.h;
     const h = explicitH ?? heights[id] ?? MIN_HEIGHT;
 
-    // span 폭이 들어갈 수 있는 시작 열 중 가장 낮은(위쪽) 자리를 찾는다.
-    let bestCol = 0;
-    let bestY = Infinity;
-    for (let c = 0; c <= cols - span; c++) {
-      let y = 0;
-      for (let k = c; k < c + span; k++) y = Math.max(y, colBottoms[k]);
-      if (y < bestY - 0.5) {
-        bestY = y;
-        bestCol = c;
-      }
-    }
-    if (!Number.isFinite(bestY)) bestY = 0;
+    // 남은 폭에 못 들어가면 다음 줄로 넘긴다.
+    if (cursor + span > cols) cursor = 0;
+    const startCol = cursor;
+
+    // 이 위젯이 차지하는 열들 중 가장 낮은 바닥까지 끌어올린다.
+    let y = 0;
+    for (let k = startCol; k < startCol + span; k++) y = Math.max(y, colBottoms[k]);
 
     pos[id] = {
-      x: bestCol * (colWidth + GRID_GAP),
-      y: bestY,
+      x: startCol * (colWidth + GRID_GAP),
+      y,
       w: span * colWidth + (span - 1) * GRID_GAP,
     };
-    const bottom = bestY + h + GRID_GAP;
-    for (let k = bestCol; k < bestCol + span; k++) colBottoms[k] = bottom;
+    const bottom = y + h + GRID_GAP;
+    for (let k = startCol; k < startCol + span; k++) colBottoms[k] = bottom;
+    cursor += span;
   }
 
   const containerHeight = Math.max(0, ...colBottoms.map((b) => b - GRID_GAP));
   return { pos, containerHeight };
+}
+
+// 드래그 재정렬: dragId 를 targetId 앞자리로 옮긴 새 순서를 만든다(드롭·미리보기 공용).
+function reorderBefore(order: string[], dragId: string, targetId: string): string[] {
+  if (dragId === targetId) return order;
+  const next = order.filter((id) => id !== dragId);
+  const to = next.indexOf(targetId);
+  if (to === -1) return order;
+  next.splice(to, 0, dragId);
+  return next;
 }
 
 // 저장된 순서와 현재 위젯 목록을 정합화한다.
@@ -258,19 +266,12 @@ export function WidgetGrid({
     [sizeKey],
   );
 
-  const handleDrop = (targetId: string) => {
-    if (!dragId || dragId === targetId) {
-      setDragId(null);
-      setOverId(null);
-      return;
+  // 드롭은 컨테이너에서 처리한다. 점선 자리(드래그 중인 위젯) 위에 놓아도
+  // 마지막으로 가리킨 대상(overId) 앞으로 정확히 들어가도록.
+  const commitDrop = () => {
+    if (dragId && overId && dragId !== overId) {
+      persistOrder(reorderBefore(order, dragId, overId));
     }
-    const next = [...order];
-    const from = next.indexOf(dragId);
-    const to = next.indexOf(targetId);
-    if (from === -1 || to === -1) return;
-    next.splice(from, 1);
-    next.splice(to, 0, dragId);
-    persistOrder(next);
     setDragId(null);
     setOverId(null);
   };
@@ -343,8 +344,11 @@ export function WidgetGrid({
   const byId = new Map(widgets.map((w) => [w.id, w] as const));
   const ordered = order.map((id) => byId.get(id)).filter(Boolean) as Widget[];
 
+  // 드래그 중이면 "옮겨질 순서"로 미리 배치해, 다른 위젯이 밀려나며 들어갈 공간이 보이게 한다.
+  const previewOrder =
+    dragId && overId && dragId !== overId ? reorderBefore(order, dragId, overId) : order;
   const { pos, containerHeight } = packMasonry(
-    order,
+    previewOrder,
     new Set(byId.keys()),
     sizes,
     resizing,
@@ -370,21 +374,30 @@ export function WidgetGrid({
         </button>
       </div>
 
-      <div ref={containerRef} className="relative" style={{ height: `${containerHeight}px` }}>
+      <div
+        ref={containerRef}
+        className="relative"
+        style={{ height: `${containerHeight}px` }}
+        onDragOver={(e) => {
+          if (dragId) e.preventDefault();
+        }}
+        onDrop={commitDrop}
+      >
         {ordered.map((w) => {
           const live = resizing && resizing.id === w.id ? resizing : null;
           const p = pos[w.id];
           if (!p) return null;
           const explicitH = live?.h ?? sizes[w.id]?.h;
+          const isDragging = dragId === w.id;
           return (
             <div
               key={w.id}
               onDragOver={(e) => {
-                if (!dragId) return;
+                if (!dragId || w.id === dragId) return;
                 e.preventDefault();
+                e.stopPropagation();
                 if (overId !== w.id) setOverId(w.id);
               }}
-              onDrop={() => handleDrop(w.id)}
               style={{
                 position: "absolute",
                 left: 0,
@@ -394,14 +407,12 @@ export function WidgetGrid({
                 height: explicitH ? `${explicitH}px` : undefined,
               }}
               className={`group/widget overflow-hidden rounded-xl ${
-                live ? "" : "transition-transform duration-150 ease-out"
+                live || isDragging ? "" : "transition-transform duration-150 ease-out"
               } ${
-                overId === w.id && dragId !== w.id
-                  ? "ring-2 ring-primary/50 ring-offset-2 ring-offset-background"
+                isDragging
+                  ? "border-2 border-dashed border-primary/70 bg-primary/5 opacity-70"
                   : ""
-              } ${dragId === w.id ? "opacity-40" : ""} ${
-                live ? "z-20 ring-2 ring-primary/60" : ""
-              }`}
+              } ${live ? "z-20 ring-2 ring-primary/60" : ""}`}
             >
               {/* 이동 손잡이 */}
               <button
