@@ -73,6 +73,8 @@ export default function WorkStatusDetailPage() {
   useEffect(() => {
     try {
       const s = localStorage.getItem("ws-assign-side");
+      // 마운트 시 저장된 위치 1회 복원 (SSR 하이드레이션 불일치 방지 위해 effect 사용)
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (s === "left" || s === "right") setAssignSide(s);
     } catch {
       /* ignore */
