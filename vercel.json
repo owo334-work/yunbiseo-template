@@ -8,6 +8,10 @@
     {
       "path": "/api/cron/slack-schedule-reminder",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/purge-otp",
+      "schedule": "0 * * * *"
     }
   ]
 }
