@@ -19,7 +19,7 @@ export interface ParsedCardSms {
 
 const ISSUER_PATTERNS: Array<{ keyword: RegExp; name: string }> = [
   { keyword: /신한카드/, name: "신한" },
-  { keyword: /삼성카드/, name: "삼성" },
+  { keyword: /삼성카드|삼성\s*\d{4}\s*승인/, name: "삼성" },
   { keyword: /현대카드/, name: "현대" },
   { keyword: /KB.{0,2}국민카드|국민카드/, name: "KB국민" },
   { keyword: /롯데카드/, name: "롯데" },
@@ -47,6 +47,8 @@ function extractLast4(text: string): string | null {
     /(?:끝|뒷)\s*4자리[:\s]*(\d{4})/,
     // 카드사명 직후 4자리 (예: "NH기업9133", "NH개인1234")
     /(?:NH(?:기업|개인|카드)|신한카드|삼성카드|현대카드|국민카드|롯데카드|하나카드|BC카드|우리카드|씨티카드)\s*(\d{4})/,
+    // 카드사명 + 4자리 + 승인 (예: "삼성7667승인" — '카드' 단어 없이 붙는 형식)
+    /(?:삼성|신한|현대|KB국민|국민|롯데|하나|우리|BC|비씨|씨티|NH농협|NH|농협|카카오뱅크|카카오)\s*(\d{4})\s*승인/,
   ];
   for (const p of patterns) {
     const m = text.match(p);
