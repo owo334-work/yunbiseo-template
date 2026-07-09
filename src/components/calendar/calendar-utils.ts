@@ -215,11 +215,11 @@ export const DEFAULT_SCHEDULE_CATEGORIES: { value: string; label: string; color:
   { value: "vacation", label: "휴가", color: "#22c55e" },
   { value: "deadline", label: "마감", color: "#ef4444" },
   { value: "annual_leave", label: "연차", color: "#f43f5e" },
-  { value: "monthly_leave", label: "월차", color: "#fb923c" },
   { value: "other", label: "기타", color: "#6b7280" },
 ];
 
-// 연차/월차(휴무) 유형: 전 직원 캘린더에서 업무 일정과 분리해 상단에 표시한다.
+// 휴무(연차) 유형: 전 직원 캘린더에서 업무 일정과 분리해 상단에 표시한다.
+// monthly_leave(월차)는 더 이상 선택 항목이 아니지만, 과거 데이터 호환을 위해 판별에는 남겨둔다.
 export const LEAVE_CATEGORY_VALUES = ["annual_leave", "monthly_leave"] as const;
 
 export function isLeaveCategory(category: string): boolean {
