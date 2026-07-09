@@ -38,8 +38,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { DateInput } from "@/components/ui/date-input";
 import {
   DEFAULT_SCHEDULE_CATEGORIES,
+  isLeaveCategory,
   toDateInput,
 } from "@/components/calendar/calendar-utils";
+import { LEAVE_UNIT_OPTIONS } from "@/lib/leave";
 import { cn } from "@/lib/utils";
 import type {
   Customer,
@@ -174,6 +176,8 @@ function createEmpty(
     recurrence_end_date: null,
     recurrence_group_id: null,
     created_by: currentEmployeeId ?? "",
+    leave_employee_id: null,
+    leave_days: null,
   };
 }
 
@@ -254,6 +258,8 @@ export function ScheduleDialog({
         recurrence_end_date: schedule.recurrence_end_date,
         recurrence_group_id: schedule.recurrence_group_id,
         created_by: schedule.created_by,
+        leave_employee_id: schedule.leave_employee_id ?? null,
+        leave_days: schedule.leave_days ?? null,
       });
       setAttendeeIds(schedule.attendees?.map((attendee) => attendee.employee_id) ?? []);
       setStartTimeInput(toTimeString(schedule.start_at));
@@ -297,6 +303,11 @@ export function ScheduleDialog({
       return false;
     }
 
+    if (isLeaveCategory(form.category) && !form.leave_employee_id) {
+      toast.error("연차/월차는 대상 직원을 선택해 주세요.");
+      return false;
+    }
+
     if (recurrenceType !== "none" && !recurrenceEndDate) {
       toast.error("반복 종료일을 입력해 주세요.");
       return false;
@@ -321,8 +332,11 @@ export function ScheduleDialog({
       const recurrence = recurrenceType !== "none"
         ? { type: recurrenceType, endDate: recurrenceEndDate || null }
         : undefined;
+      const payload: ScheduleInsert = isLeaveCategory(form.category)
+        ? { ...form, leave_days: form.leave_days ?? 1 }
+        : { ...form, leave_employee_id: null, leave_days: null };
       const saved = await onSave(
-        form,
+        payload,
         attendeeIds,
         recurrence,
         {
@@ -974,7 +988,17 @@ export function ScheduleDialog({
                     borderColor: form.category === category.value ? category.color : undefined,
                     color: form.category === category.value ? category.color : undefined,
                   }}
-                  onClick={() => setForm((prev) => ({ ...prev, category: category.value }))}
+                  onClick={() =>
+                    setForm((prev) => {
+                      const next = { ...prev, category: category.value };
+                      if (isLeaveCategory(category.value)) {
+                        if (!next.leave_employee_id)
+                          next.leave_employee_id = prev.created_by || currentEmployeeId || null;
+                        if (next.leave_days == null) next.leave_days = 1;
+                      }
+                      return next;
+                    })
+                  }
                 >
                   <span
                     className="inline-block h-2.5 w-2.5 rounded-full"
@@ -985,6 +1009,55 @@ export function ScheduleDialog({
               ))}
             </div>
           </div>
+
+          {isLeaveCategory(form.category) && (
+            <div className="space-y-3 rounded-md border border-border/70 bg-muted/30 p-3">
+              <div className="space-y-2">
+                <Label htmlFor="sch-leave-emp">휴가 대상 직원 *</Label>
+                <select
+                  id="sch-leave-emp"
+                  value={form.leave_employee_id ?? ""}
+                  onChange={(e) =>
+                    setForm((prev) => ({ ...prev, leave_employee_id: e.target.value || null }))
+                  }
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  <option value="">직원 선택</option>
+                  {employees.map((employee) => (
+                    <option key={employee.id} value={employee.id}>
+                      {employee.name}
+                      {employee.department ? ` (${employee.department})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>사용 단위</Label>
+                <div className="flex flex-wrap gap-2">
+                  {LEAVE_UNIT_OPTIONS.map((unit) => {
+                    const active = (form.leave_days ?? 1) === unit.value;
+                    return (
+                      <button
+                        key={unit.value}
+                        type="button"
+                        className={cn(
+                          "rounded-full border px-3 py-1 text-sm transition-colors",
+                          active ? "border-primary bg-primary/10 text-primary" : "hover:bg-muted"
+                        )}
+                        onClick={() => setForm((prev) => ({ ...prev, leave_days: unit.value }))}
+                      >
+                        {unit.label} ({unit.value}일)
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  선택한 직원의 연차/월차 사용일수로 집계됩니다. (여러 날이면 날짜별로 등록)
+                </p>
+              </div>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label>참석자</Label>

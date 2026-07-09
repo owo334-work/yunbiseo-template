@@ -30,6 +30,8 @@ type ScheduleInput = {
   recurrence_type?: RecurrenceType;
   recurrence_end_date?: string | null;
   recurrence_group_id?: string | null;
+  leave_employee_id?: string | null;
+  leave_days?: number | null;
 };
 
 type ScheduleSeriesRow = {
@@ -85,6 +87,8 @@ function buildMutableScheduleFields(
     recurrence_type: overrides?.recurrence_type ?? schedule.recurrence_type ?? "none",
     recurrence_end_date: overrides?.recurrence_end_date ?? schedule.recurrence_end_date ?? null,
     recurrence_group_id: overrides?.recurrence_group_id ?? schedule.recurrence_group_id ?? null,
+    leave_employee_id: schedule.leave_employee_id ?? null,
+    leave_days: schedule.leave_days ?? null,
     sync_source: "local" as const,
   };
 }
