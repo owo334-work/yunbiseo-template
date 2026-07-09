@@ -16,12 +16,11 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const isFullWidth =
-    (pathname?.startsWith("/dashboard/workspace") ?? false) ||
-    (pathname?.startsWith("/dashboard/office") ?? false);
+  const isFullWidth = pathname?.startsWith("/dashboard/office") ?? false;
   const isWideContent =
     (pathname?.startsWith("/dashboard/schedules") ?? false) ||
-    (pathname?.startsWith("/dashboard/work-status") ?? false);
+    (pathname?.startsWith("/dashboard/work-status") ?? false) ||
+    (pathname?.startsWith("/dashboard/workspace") ?? false);
 
   return (
     <MaskingProvider>
