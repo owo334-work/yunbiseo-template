@@ -27,6 +27,13 @@ import {
 import { sendLog } from "@/lib/log-client";
 import { createClient } from "@/lib/supabase/client";
 import type { Deposit, DepositInsert } from "@/lib/types";
+import {
+  ACCOUNT_ALIASES_KEY,
+  aliasForAccount,
+  parseAccountAliases,
+  type AccountAliasMap,
+} from "@/lib/account-aliases";
+import { AccountAliasDialog, type AccountRef } from "@/components/account-alias-dialog";
 
 export default function DepositsPage() {
   const supabase = useMemo(() => createClient(), []);
@@ -38,6 +45,8 @@ export default function DepositsPage() {
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [aiMatchOpen, setAiMatchOpen] = useState(false);
+  const [accountAliases, setAccountAliases] = useState<AccountAliasMap>({});
+  const [aliasDialogOpen, setAliasDialogOpen] = useState(false);
   const [selectedDeposit, setSelectedDeposit] = useState<Deposit | null>(null);
   const { sort, toggle } = useSortState();
 
@@ -61,6 +70,13 @@ export default function DepositsPage() {
     } else {
       setDeposits(data ?? []);
     }
+
+    const { data: aliasRow } = await supabase
+      .from("system_settings")
+      .select("value")
+      .eq("key", ACCOUNT_ALIASES_KEY)
+      .maybeSingle();
+    setAccountAliases(parseAccountAliases(aliasRow?.value));
 
     setLoading(false);
   }, [supabase]);
@@ -204,6 +220,20 @@ export default function DepositsPage() {
 
   const fmt = (amount: number) => mask("amount", amount.toLocaleString("ko-KR"));
 
+  // 계좌 표시 별칭: (1) 끝자리별 매핑 별칭 우선, (2) 없으면 입금 개별 별칭
+  const displayAlias = (deposit: Deposit) =>
+    aliasForAccount(deposit.account_last4, accountAliases) ?? deposit.account_alias ?? null;
+
+  // 별칭 관리 다이얼로그에 넘길 계좌 목록(입금에서 보인 끝자리 distinct)
+  const accountsForDialog = useMemo<AccountRef[]>(() => {
+    const map = new Map<string, string | null>();
+    for (const d of deposits) {
+      if (!d.account_last4) continue;
+      if (!map.has(d.account_last4)) map.set(d.account_last4, d.bank_name ?? null);
+    }
+    return Array.from(map.entries()).map(([last4, bank]) => ({ last4, bank }));
+  }, [deposits]);
+
   const revenueLabel = (rev: NonNullable<Deposit["revenues"]>) => {
     const project = rev.projects;
     const prefix = project?.client ?? project?.name;
@@ -246,6 +276,7 @@ export default function DepositsPage() {
         description="사업자 통장 입금 내역을 수기 입력과 자동 수집 기준으로 함께 관리합니다."
         actions={
           <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setAliasDialogOpen(true)}>계좌 별칭</Button>
             <Button variant="outline" onClick={handleTestNotification}>전광판 테스트</Button>
             <Button
               variant="outline"
@@ -376,9 +407,9 @@ export default function DepositsPage() {
                 <div className="space-y-1 text-xs text-muted-foreground">
                   <p>입금일시: {new Date(deposit.created_at).toLocaleString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</p>
                   <p>금액: {fmt(deposit.amount)}원</p>
-                  {deposit.account_alias || deposit.account_last4 ? (
+                  {displayAlias(deposit) || deposit.account_last4 ? (
                     <p>
-                      계좌: {deposit.account_alias ? `${deposit.account_alias} ` : ""}
+                      계좌: {displayAlias(deposit) ? `${displayAlias(deposit)} ` : ""}
                       {deposit.account_last4 ? `···${deposit.account_last4}` : ""}
                     </p>
                   ) : null}
@@ -447,10 +478,10 @@ export default function DepositsPage() {
                     <TableCell className="text-right">{fmt(deposit.amount)}원</TableCell>
                     <TableCell>{deposit.bank_name || "-"}</TableCell>
                     <TableCell className="whitespace-nowrap">
-                      {deposit.account_alias || deposit.account_last4 ? (
+                      {displayAlias(deposit) || deposit.account_last4 ? (
                         <span className="inline-flex items-center gap-1.5">
-                          {deposit.account_alias ? (
-                            <span className="font-medium">{deposit.account_alias}</span>
+                          {displayAlias(deposit) ? (
+                            <span className="font-medium">{displayAlias(deposit)}</span>
                           ) : null}
                           {deposit.account_last4 ? (
                             <span className="font-mono text-xs text-muted-foreground">
@@ -501,6 +532,14 @@ export default function DepositsPage() {
         open={aiMatchOpen}
         onOpenChange={setAiMatchOpen}
         onLinked={() => void fetchData()}
+      />
+
+      <AccountAliasDialog
+        open={aliasDialogOpen}
+        onOpenChange={setAliasDialogOpen}
+        accounts={accountsForDialog}
+        aliases={accountAliases}
+        onSaved={setAccountAliases}
       />
     </PageShell>
   );
