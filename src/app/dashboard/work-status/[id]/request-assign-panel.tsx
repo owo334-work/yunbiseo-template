@@ -87,7 +87,7 @@ export function RequestAssignPanel({
   };
 
   return (
-    <Card className="border-primary/25 bg-primary/[0.03]">
+    <Card className="rounded-[1rem] border-primary/25 bg-primary/[0.03]">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-sm">
           <Megaphone className="h-4 w-4 text-primary" />

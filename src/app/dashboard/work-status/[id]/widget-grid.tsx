@@ -559,7 +559,7 @@ export function WidgetGrid({
                 height: explicitH ? `${explicitH}px` : undefined,
                 zIndex: active ? 20 : undefined,
               }}
-              className={`group/widget overflow-hidden rounded-xl ${
+              className={`group/widget overflow-hidden rounded-[1rem] ${
                 active ? "ring-2 ring-primary/60" : "transition-transform duration-150 ease-out"
               }`}
             >

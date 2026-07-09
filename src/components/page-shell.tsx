@@ -83,7 +83,7 @@ export function PageHeader({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 rounded-[1.5rem] border border-border/70 bg-card/85 p-4 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/75 lg:flex-row lg:items-start lg:justify-between lg:p-5",
+        "flex flex-col gap-3 rounded-[0.75rem] border border-border/70 bg-card/85 p-4 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/75 lg:flex-row lg:items-start lg:justify-between lg:p-5",
         className
       )}
     >
@@ -143,7 +143,7 @@ export function PageToolbar({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 rounded-[1.5rem] border border-border/70 bg-card/85 p-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/75 md:p-4",
+        "flex flex-col gap-3 rounded-[0.75rem] border border-border/70 bg-card/85 p-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/75 md:p-4",
         className
       )}
       {...props}

@@ -204,7 +204,7 @@ export function SharedNotesBoard({
   };
 
   return (
-    <Card className="border-border/70 bg-card/85">
+    <Card className="rounded-[1rem] border-border/70 bg-card/85">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-sm">
           <Users className="h-4 w-4 text-primary" />

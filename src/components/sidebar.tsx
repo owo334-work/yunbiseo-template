@@ -556,7 +556,7 @@ export function Sidebar() {
         collapsed ? "w-20" : "w-72"
       )}
     >
-      <div className="m-3 flex h-[calc(100vh-1.5rem)] flex-col rounded-[2rem] border border-white/70 bg-sidebar/85 shadow-[0_28px_70px_-38px_rgba(13,77,77,0.4)] backdrop-blur-md">
+      <div className="m-3 flex h-[calc(100vh-1.5rem)] flex-col rounded-[1rem] border border-white/70 bg-sidebar/85 shadow-[0_28px_70px_-38px_rgba(13,77,77,0.4)] backdrop-blur-md">
         <div className="flex items-center gap-3 border-b border-sidebar-border/70 px-4 py-4">
           <Brand collapsed={collapsed} />
           <Button
@@ -622,7 +622,7 @@ export function MobileSidebar() {
           </SheetTrigger>
           <SheetContent side="left" className="w-[300px] border-r-0 bg-transparent p-3 shadow-none">
             <SheetTitle className="sr-only">윤비서 메뉴</SheetTitle>
-            <div className="flex h-full flex-col rounded-[2rem] border border-white/70 bg-sidebar/95 shadow-[0_28px_70px_-38px_rgba(13,77,77,0.42)] backdrop-blur-md">
+            <div className="flex h-full flex-col rounded-[1rem] border border-white/70 bg-sidebar/95 shadow-[0_28px_70px_-38px_rgba(13,77,77,0.42)] backdrop-blur-md">
               <div className="border-b border-sidebar-border/70 px-4 py-4">
                 <Brand />
               </div>

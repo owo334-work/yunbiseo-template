@@ -21,7 +21,7 @@ function progressTone(value: number) {
 
 export function RequestSentBoard({ requests }: { requests: SentRequest[] }) {
   return (
-    <Card className="border-border/70 bg-card/85">
+    <Card className="rounded-[1rem] border-border/70 bg-card/85">
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-sm">
           <Send className="h-4 w-4 text-primary" />
