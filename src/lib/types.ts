@@ -901,6 +901,8 @@ export interface Deposit {
   depositor_name: string;
   bank_name: string | null;
   account_alias: string | null;
+  account_last4?: string | null;
+  received_device?: string | null;
   revenue_id: string | null;
   source: DepositSource;
   raw_message: string | null;

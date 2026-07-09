@@ -173,6 +173,8 @@ export default function DepositsPage() {
         return (
           deposit.depositor_name.includes(keyword) ||
           deposit.bank_name?.includes(keyword) ||
+          deposit.account_last4?.includes(keyword) ||
+          deposit.account_alias?.includes(keyword) ||
           deposit.memo?.includes(keyword)
         );
       }),
@@ -374,6 +376,12 @@ export default function DepositsPage() {
                 <div className="space-y-1 text-xs text-muted-foreground">
                   <p>입금일시: {new Date(deposit.created_at).toLocaleString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</p>
                   <p>금액: {fmt(deposit.amount)}원</p>
+                  {deposit.account_alias || deposit.account_last4 ? (
+                    <p>
+                      계좌: {deposit.account_alias ? `${deposit.account_alias} ` : ""}
+                      {deposit.account_last4 ? `···${deposit.account_last4}` : ""}
+                    </p>
+                  ) : null}
                   <p>
                     매출 연결:{" "}
                     {deposit.revenues ? (
@@ -415,6 +423,7 @@ export default function DepositsPage() {
                   <SortableTableHead sortKey="bank_name" currentSort={sort} onSort={toggle}>
                     은행
                   </SortableTableHead>
+                  <TableHead>계좌</TableHead>
                   <SortableTableHead sortKey="source" currentSort={sort} onSort={toggle}>
                     출처
                   </SortableTableHead>
@@ -437,6 +446,22 @@ export default function DepositsPage() {
                     <TableCell className="max-w-[150px] truncate font-medium">{mask("name", deposit.depositor_name)}</TableCell>
                     <TableCell className="text-right">{fmt(deposit.amount)}원</TableCell>
                     <TableCell>{deposit.bank_name || "-"}</TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {deposit.account_alias || deposit.account_last4 ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          {deposit.account_alias ? (
+                            <span className="font-medium">{deposit.account_alias}</span>
+                          ) : null}
+                          {deposit.account_last4 ? (
+                            <span className="font-mono text-xs text-muted-foreground">
+                              ···{deposit.account_last4}
+                            </span>
+                          ) : null}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <Badge variant={deposit.source === "webhook" ? "default" : "outline"}>
                         {deposit.source === "webhook" ? "자동" : "수기"}
