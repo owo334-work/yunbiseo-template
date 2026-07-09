@@ -363,7 +363,7 @@ export default function WorkStatusDetailPage() {
   widgets.push({
     id: "profile",
     node: (
-      <Card className="min-h-full border-border/70 bg-card/85">
+      <Card className="min-h-full rounded-[1rem] border-border/70 bg-card/85">
         <CardContent className="space-y-2 p-4 pl-8">
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary/10 text-base font-semibold text-primary">
@@ -397,7 +397,7 @@ export default function WorkStatusDetailPage() {
     widgets.push({
       id: `fixed-${list.key}`,
       node: (
-        <Card className="min-h-full border-border/70 bg-card/85">
+        <Card className="min-h-full gap-1 rounded-[1rem] border-border/70 bg-card/85">
           <CardHeader className="pb-2 pl-8">
             <CardTitle className="text-sm">{list.label}</CardTitle>
           </CardHeader>
@@ -467,7 +467,7 @@ export default function WorkStatusDetailPage() {
   widgets.push({
     id: "deadline",
     node: (
-      <Card className="min-h-full border-border/70 bg-card/85">
+      <Card className="min-h-full rounded-[1rem] border-border/70 bg-card/85">
         <CardHeader className="pb-2 pl-8">
           <div className="flex items-center justify-between gap-2">
             <CardTitle className="text-sm">
@@ -534,7 +534,7 @@ export default function WorkStatusDetailPage() {
   widgets.push({
     id: "request-received",
     node: (
-      <Card className="min-h-full border-border/70 bg-card/85">
+      <Card className="min-h-full rounded-[1rem] border-border/70 bg-card/85">
         <CardHeader className="pb-2 pl-8">
           <div className="flex items-center justify-between gap-2">
             <CardTitle className="text-sm">
@@ -589,7 +589,7 @@ export default function WorkStatusDetailPage() {
   widgets.push({
     id: "calendar",
     node: (
-      <Card className="min-h-full border-border/70 bg-card/85">
+      <Card className="min-h-full rounded-[1rem] border-border/70 bg-card/85">
         <CardHeader className="pb-2 pl-8">
           <CardTitle className="flex items-center gap-2 text-sm">
             <CalendarDays className="h-4 w-4 text-primary" />
@@ -622,7 +622,7 @@ export default function WorkStatusDetailPage() {
         disabledHint="같은 부서 직원만 이 팀 보드에 글을 쓸 수 있습니다."
       />
     ) : (
-      <Card className="min-h-full border-dashed border-border/70 bg-card/60">
+      <Card className="min-h-full rounded-[1rem] border-dashed border-border/70 bg-card/60">
         <CardContent className="flex h-full items-center justify-center p-6 text-center text-xs text-muted-foreground">
           이 직원의 부서가 지정되어 있지 않아 팀 공유란이 없습니다.
           <br />
