@@ -21,6 +21,8 @@ export interface Employee {
   login_id: string | null;
   auth_uid: string | null;
   focused_task_id?: string | null;
+  annual_leave_adjust?: number | null;
+  monthly_leave_granted?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -592,6 +594,8 @@ export interface Schedule {
   recurrence_end_date: string | null;
   recurrence_group_id: string | null;
   created_by: string;
+  leave_employee_id?: string | null;
+  leave_days?: number | null;
   created_at: string;
   updated_at: string;
   creator?: { id: string; name: string } | null;
