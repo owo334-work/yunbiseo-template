@@ -9,18 +9,32 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useMasking } from "@/components/masking-provider";
 import { formatKstDateTime } from "@/lib/date";
 import { resolveEmployeeType } from "@/lib/employee-type";
+import type { LeaveSummary } from "@/lib/leave";
 import type { Employee } from "@/lib/types";
 
 interface EmployeeTableProps {
   employees: Employee[];
   currentUserId?: string | null;
+  leaveSummary?: Map<string, LeaveSummary>;
+}
+
+function LeaveCell({ summary }: { summary?: LeaveSummary }) {
+  if (!summary) return <span className="text-muted-foreground">-</span>;
+  return (
+    <div className="whitespace-nowrap leading-tight">
+      <span className="font-medium text-foreground">잔여 {summary.annualRemaining}일</span>
+      <span className="block text-[11px] text-muted-foreground">
+        사용 {summary.annualUsed} / 부여 {summary.annualGranted}
+      </span>
+    </div>
+  );
 }
 
 function formatLastLoginAt(value: string | null | undefined) {
   return value ? formatKstDateTime(value) : "-";
 }
 
-export function EmployeeTable({ employees, currentUserId }: EmployeeTableProps) {
+export function EmployeeTable({ employees, currentUserId, leaveSummary }: EmployeeTableProps) {
   const router = useRouter();
   const { sort, toggle } = useSortState<string>();
   const { mask } = useMasking();
@@ -97,6 +111,11 @@ export function EmployeeTable({ employees, currentUserId }: EmployeeTableProps) 
               <span className="col-span-2">{employee.email ? mask("email", employee.email) : "-"}</span>
               <span>{employee.phone ? mask("phone", employee.phone) : "-"}</span>
               <span>{employee.hire_date ?? "-"}</span>
+              {leaveSummary?.get(employee.id) ? (
+                <span>연차 잔여 {leaveSummary.get(employee.id)!.annualRemaining}일</span>
+              ) : (
+                <span />
+              )}
               <span className="col-span-2">최근 로그인 {formatLastLoginAt(employee.last_login_at)}</span>
             </div>
           </button>
@@ -130,6 +149,7 @@ export function EmployeeTable({ employees, currentUserId }: EmployeeTableProps) 
               <SortableTableHead sortKey="hire_date" currentSort={sort} onSort={toggle}>
                 입사일
               </SortableTableHead>
+              <TableHead className="font-medium text-muted-foreground">연차</TableHead>
               <SortableTableHead sortKey="last_login_at" currentSort={sort} onSort={toggle}>
                 최근 로그인
               </SortableTableHead>
@@ -175,6 +195,9 @@ export function EmployeeTable({ employees, currentUserId }: EmployeeTableProps) 
                 <TableCell className="max-w-[200px] truncate">{employee.email ? mask("email", employee.email) : "-"}</TableCell>
                 <TableCell className="max-w-[150px] truncate">{employee.phone ? mask("phone", employee.phone) : "-"}</TableCell>
                 <TableCell>{employee.hire_date ?? "-"}</TableCell>
+                <TableCell>
+                  <LeaveCell summary={leaveSummary?.get(employee.id)} />
+                </TableCell>
                 <TableCell>{formatLastLoginAt(employee.last_login_at)}</TableCell>
               </TableRow>
             ))}

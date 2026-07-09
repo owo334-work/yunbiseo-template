@@ -29,6 +29,14 @@ import { suggestSlackIdForEmployee } from "@/lib/employee-slack";
 import { resolveEmployeeType } from "@/lib/employee-type";
 import { createClient } from "@/lib/supabase/client";
 import type { Employee, EmployeeInsert } from "@/lib/types";
+import {
+  computeLeaveSummary,
+  LEAVE_BASIS_KEY,
+  parseLeaveBasis,
+  type LeaveBasis,
+  type LeaveScheduleRow,
+  type LeaveSummary,
+} from "@/lib/leave";
 
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -38,6 +46,8 @@ export default function EmployeesPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [employeeTypeEnabled, setEmployeeTypeEnabled] = useState(true);
+  const [leaveSchedules, setLeaveSchedules] = useState<LeaveScheduleRow[]>([]);
+  const [leaveBasis, setLeaveBasis] = useState<LeaveBasis>("fiscal");
   const [generatedPassword, setGeneratedPassword] = useState<{
     loginId: string;
     password: string;
@@ -48,14 +58,23 @@ export default function EmployeesPage() {
     setLoading(true);
     setError(false);
 
-    const [authRes, probeRes, employeeRes] = await Promise.all([
+    const [authRes, probeRes, employeeRes, leaveRes, basisRes] = await Promise.all([
       supabase.auth.getUser(),
       supabase.from("employees").select("id, employee_type").limit(1),
       supabase.from("employees").select("*").order("created_at", { ascending: false }).limit(1000),
+      supabase
+        .from("schedules")
+        .select("leave_employee_id, category, leave_days, start_at")
+        .in("category", ["annual_leave", "monthly_leave"])
+        .not("leave_employee_id", "is", null)
+        .limit(5000),
+      supabase.from("system_settings").select("value").eq("key", LEAVE_BASIS_KEY).maybeSingle(),
     ]);
 
     const user = authRes.data.user;
     setCurrentUserId(user?.id ?? null);
+    setLeaveSchedules(leaveRes.error ? [] : ((leaveRes.data ?? []) as LeaveScheduleRow[]));
+    setLeaveBasis(parseLeaveBasis(basisRes.data?.value));
 
     const supportsEmployeeType = !probeRes.error;
     setEmployeeTypeEnabled(supportsEmployeeType);
@@ -206,6 +225,14 @@ export default function EmployeesPage() {
     );
   });
 
+  const leaveSummaryById = useMemo(() => {
+    const map = new Map<string, LeaveSummary>();
+    for (const employee of employees) {
+      map.set(employee.id, computeLeaveSummary(employee, leaveSchedules, leaveBasis));
+    }
+    return map;
+  }, [employees, leaveSchedules, leaveBasis]);
+
   const activeCount = employees.filter((employee) => employee.is_active !== false).length;
   const inactiveCount = employees.filter((employee) => employee.is_active === false).length;
   const adminCount = employees.filter(
@@ -314,7 +341,11 @@ export default function EmployeesPage() {
           }
         />
       ) : (
-        <EmployeeTable employees={filtered} currentUserId={currentUserId} />
+        <EmployeeTable
+          employees={filtered}
+          currentUserId={currentUserId}
+          leaveSummary={leaveSummaryById}
+        />
       )}
 
       <EmployeeDialog
