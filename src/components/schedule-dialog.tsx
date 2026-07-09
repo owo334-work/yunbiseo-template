@@ -597,27 +597,29 @@ export function ScheduleDialog({
               />
             </div>
 
-            <label className="flex cursor-pointer items-center gap-2">
-              <Checkbox
-                checked={form.all_day}
-                onCheckedChange={(checked) =>
-                  setForm((prev) => {
-                    const nextAllDay = Boolean(checked);
-                    if (nextAllDay) return { ...prev, all_day: true };
+            {!isLeaveCategory(form.category) && (
+              <label className="flex cursor-pointer items-center gap-2">
+                <Checkbox
+                  checked={form.all_day}
+                  onCheckedChange={(checked) =>
+                    setForm((prev) => {
+                      const nextAllDay = Boolean(checked);
+                      if (nextAllDay) return { ...prev, all_day: true };
 
-                    return {
-                      ...prev,
-                      all_day: false,
-                      end_at: addMinutes(
-                        prev.start_at,
-                        getDurationMinutes(prev.start_at, prev.end_at),
-                      ),
-                    };
-                  })
-                }
-              />
-              <span className="text-sm">종일</span>
-            </label>
+                      return {
+                        ...prev,
+                        all_day: false,
+                        end_at: addMinutes(
+                          prev.start_at,
+                          getDurationMinutes(prev.start_at, prev.end_at),
+                        ),
+                      };
+                    })
+                  }
+                />
+                <span className="text-sm">종일</span>
+              </label>
+            )}
 
             <div className="space-y-3">
               <div className="space-y-2">
@@ -819,6 +821,8 @@ export function ScheduleDialog({
                       setForm((prev) => {
                         const next = { ...prev, category: category.value };
                         if (isLeaveCategory(category.value)) {
+                          // 연차는 종일 고정(시간 없음)
+                          next.all_day = true;
                           if (!next.leave_employee_id)
                             next.leave_employee_id =
                               prev.created_by || currentEmployeeId || null;

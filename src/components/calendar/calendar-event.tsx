@@ -2,7 +2,13 @@
 
 import { cn } from "@/lib/utils";
 import type { Schedule } from "@/lib/types";
-import { format, parseISO, getCategoryColor, toPastel } from "./calendar-utils";
+import {
+  format,
+  parseISO,
+  getCategoryColor,
+  isLeaveCategory,
+  toPastel,
+} from "./calendar-utils";
 
 interface CalendarEventProps {
   schedule: Schedule;
@@ -25,6 +31,25 @@ export function CalendarEvent({ schedule, compact, short, onClick, startAtOverri
   const startTime = schedule.all_day
     ? null
     : format(parseISO(displayStartAt), "HH:mm");
+
+  // 연차 등 휴무: 시간 없이 문구만, 배경색은 글자 부분까지만 감싸는 칩으로 표시
+  const isLeave = isLeaveCategory(schedule.category);
+
+  if (isLeave) {
+    return (
+      <div role="button" onClick={handleClick} className="w-full text-left leading-tight">
+        <span
+          className={cn(
+            "inline-block break-words rounded px-1 py-0.5 text-foreground transition-opacity hover:opacity-80",
+            compact ? "text-[10px] sm:text-xs" : "text-xs"
+          )}
+          style={{ backgroundColor: toPastel(categoryColor) }}
+        >
+          {schedule.title}
+        </span>
+      </div>
+    );
+  }
 
   if (compact) {
     return (
