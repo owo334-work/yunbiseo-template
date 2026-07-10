@@ -99,9 +99,22 @@ function escapeHtml(value: string) {
 }
 
 function editorHtml(value: string) {
-  if (!value.trim()) return "<ul><li><br></li></ul>";
+  if (!value.trim()) return "<div><br></div>";
   if (/<[a-z][\s\S]*>/i.test(value)) return value;
-  return `<ul>${value.split("\n").map((line) => `<li>${escapeHtml(line) || "<br>"}</li>`).join("")}</ul>`;
+  return value.split("\n").map((line) => `<div>${escapeHtml(line) || "<br>"}</div>`).join("");
+}
+
+function restoreEmptyParagraph(editor: HTMLDivElement) {
+  if (editor.textContent?.trim() || editor.querySelector("div, li")) return;
+  editor.innerHTML = "<div><br></div>";
+  const paragraph = editor.firstElementChild;
+  if (!paragraph) return;
+  const range = document.createRange();
+  range.selectNodeContents(paragraph);
+  range.collapse(true);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
 }
 
 function parseSelectedSchedule(text: string, fallback: Date) {
@@ -164,6 +177,7 @@ function MiniCalendar({ month, selected, onMonthChange, onSelect }: {
 export function WorkJournal() {
   const supabase = useMemo(() => createClient(), []);
   const boardRef = useRef<HTMLDivElement>(null);
+  const entryIdsRef = useRef(new Map<string, string>());
   const selectionRef = useRef<Range | null>(null);
   const selectedEditorRef = useRef<HTMLDivElement | null>(null);
   const [employeeId, setEmployeeId] = useState<string | null>(null);
@@ -204,7 +218,11 @@ export function WorkJournal() {
     const { data, error } = await supabase.from("work_journal_entries").select("*").eq("employee_id", employeeId)
       .gte("journal_date", dateKey(weekStart)).lte("journal_date", dateKey(addDays(weekStart, 6))).order("created_at");
     if (error) toast.error("주간 업무일지를 불러오지 못했습니다.");
-    else setEntries((data ?? []) as JournalEntry[]);
+    else {
+      const loaded = (data ?? []) as JournalEntry[];
+      entryIdsRef.current = new Map(loaded.map((entry) => [entry.journal_date, entry.id]));
+      setEntries(loaded);
+    }
   }, [employeeId, supabase, weekStart]);
 
   const loadNotes = useCallback(async () => {
@@ -241,15 +259,14 @@ export function WorkJournal() {
   const saveDay = async (day: Date, content: string) => {
     if (!employeeId) return;
     const key = dateKey(day);
-    const existing = entries.find((entry) => entry.journal_date === key);
-    if (existing) {
-      setEntries((current) => current.map((entry) => entry.id === existing.id ? { ...entry, content } : entry));
-      const { error } = await supabase.from("work_journal_entries").update({ content, updated_at: new Date().toISOString() }).eq("id", existing.id);
+    const existingId = entryIdsRef.current.get(key);
+    if (existingId) {
+      const { error } = await supabase.from("work_journal_entries").update({ content, updated_at: new Date().toISOString() }).eq("id", existingId);
       if (error) toast.error("업무일지를 저장하지 못했습니다.");
     } else {
       const { data, error } = await supabase.from("work_journal_entries").insert({ employee_id: employeeId, journal_date: key, content }).select("*").single();
       if (error) toast.error("업무일지를 저장하지 못했습니다.");
-      else setEntries((current) => [...current, data as JournalEntry]);
+      else if (data) entryIdsRef.current.set(key, (data as JournalEntry).id);
     }
   };
 
@@ -435,7 +452,7 @@ export function WorkJournal() {
   const renderDay = (day: Date, weekend = false) => {
     const entry = entries.find((item) => item.journal_date === dateKey(day));
     return (
-      <section key={`${dateKey(day)}-${entry?.id ?? "empty"}`} className={cn(
+      <section key={dateKey(day)} className={cn(
         "flex min-h-0 flex-col bg-[radial-gradient(circle_at_1px_1px,rgba(100,116,139,0.12)_1px,transparent_0)] [background-size:18px_18px]",
         weekend ? "min-h-[175px]" : "min-h-[380px]"
       )}>
@@ -448,8 +465,9 @@ export function WorkJournal() {
           suppressContentEditableWarning
           onFocus={(event) => {
             selectedEditorRef.current = event.currentTarget;
-            if (!event.currentTarget.textContent?.trim()) document.execCommand("insertUnorderedList");
+            restoreEmptyParagraph(event.currentTarget);
           }}
+          onInput={(event) => restoreEmptyParagraph(event.currentTarget)}
           onMouseUp={(event) => rememberSelection(day, event.currentTarget)}
           onKeyUp={(event) => rememberSelection(day, event.currentTarget)}
           onKeyDown={(event) => {
@@ -462,11 +480,7 @@ export function WorkJournal() {
               const selection = window.getSelection();
               const anchor = selection?.anchorNode;
               const element = anchor instanceof Element ? anchor : anchor?.parentElement;
-              if (!element?.closest("li")) {
-                event.preventDefault();
-                document.execCommand("insertUnorderedList");
-                document.execCommand("insertParagraph");
-              }
+              if (!element?.closest("li, div[contenteditable] > div")) document.execCommand("formatBlock", false, "div");
             }
           }}
           onBlur={(event) => void saveDay(day, event.currentTarget.innerHTML)}
@@ -474,6 +488,7 @@ export function WorkJournal() {
           className={cn(
             "min-h-0 flex-1 cursor-text overflow-y-auto p-3 text-[14px] leading-relaxed text-slate-700 outline-none",
             "[&_ul]:m-0 [&_ul]:list-disc [&_ul]:space-y-1.5 [&_ul]:pl-4 [&_li]:pl-0.5",
+            "[&>div]:relative [&>div]:min-h-[1.5em] [&>div]:pl-4 [&>div]:before:absolute [&>div]:before:left-0 [&>div]:before:content-['•']",
             "focus:bg-white/25"
           )}
         />
@@ -494,8 +509,10 @@ export function WorkJournal() {
 
       <ResizablePanelGroup orientation="horizontal" className="min-h-[880px] flex-1">
         <ResizablePanel defaultSize={62} minSize={42}>
-          <div className="flex h-full min-w-0 flex-col gap-3 pr-1.5">
-        <div className="surface-panel flex h-[560px] min-w-0 shrink-0 flex-col overflow-hidden rounded-[1.5rem] border border-border/60 bg-card/80 shadow-sm backdrop-blur">
+          <div className="h-full min-w-0 pr-1.5">
+          <ResizablePanelGroup orientation="vertical" className="h-full">
+          <ResizablePanel defaultSize={58} minSize={34}>
+        <div className="surface-panel flex h-full min-w-0 flex-col overflow-hidden rounded-[1.5rem] border border-border/60 bg-card/80 shadow-sm backdrop-blur">
           <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border/60 p-3">
             <MiniCalendar month={calendarMonth} selected={weekStart} onMonthChange={setCalendarMonth} onSelect={(date) => { setWeekStart(startOfWeek(date, { weekStartsOn: 1 })); setCalendarMonth(startOfMonth(date)); }} />
             <div className="grid min-w-[390px] flex-1 grid-cols-3 gap-2 self-stretch">
@@ -550,14 +567,18 @@ export function WorkJournal() {
           )}
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto lg:grid-cols-2">
-          <div className="rounded-[1.25rem] border border-border/60 bg-card/80 p-3">
+          </ResizablePanel>
+          <ResizableHandle withHandle className="my-1.5" />
+          <ResizablePanel defaultSize={42} minSize={22}>
+
+        <div className="grid h-full min-h-0 grid-cols-1 gap-3 overflow-hidden lg:grid-cols-2">
+          <div className="flex min-h-0 flex-col rounded-[1.25rem] border border-border/60 bg-card/80 p-3">
             <div className="mb-2 flex items-center gap-2">
               <CalendarCheck className="h-4 w-4 text-primary" />
               <h3 className="text-sm font-semibold">마감기한 업무 · 요청받은 업무</h3>
               <span className="text-xs text-muted-foreground">({workTasks.filter((task) => task.list_type === "deadline" || task.list_type === "instruction").length})</span>
             </div>
-            <div className="max-h-[300px] space-y-2 overflow-y-auto pr-1">
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
               {workTasks.filter((task) => task.list_type === "deadline" || task.list_type === "instruction").length === 0 ? (
                 <p className="py-4 text-center text-xs text-muted-foreground">표시할 마감·요청 업무가 없습니다.</p>
               ) : workTasks.filter((task) => task.list_type === "deadline" || task.list_type === "instruction").map((task) => (
@@ -569,6 +590,8 @@ export function WorkJournal() {
             <RequestSentBoard requests={sentRequests} />
           </div>
         </div>
+          </ResizablePanel>
+          </ResizablePanelGroup>
           </div>
         </ResizablePanel>
 
