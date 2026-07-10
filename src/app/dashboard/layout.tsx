@@ -20,6 +20,7 @@ export default function DashboardLayout({
   const isWideContent =
     (pathname?.startsWith("/dashboard/schedules") ?? false) ||
     (pathname?.startsWith("/dashboard/work-status") ?? false) ||
+    (pathname?.startsWith("/dashboard/work-journal") ?? false) ||
     (pathname?.startsWith("/dashboard/workspace") ?? false);
 
   return (
