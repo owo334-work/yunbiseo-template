@@ -20,6 +20,7 @@ import {
   Archive,
   ArchiveRestore,
   CalendarCheck,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   GripHorizontal,
@@ -104,6 +105,24 @@ function editorHtml(value: string) {
   return value.split("\n").map((line) => `<div>${escapeHtml(line) || "<br>"}</div>`).join("");
 }
 
+// 이전 버전 에디터가 insertUnorderedList 로 저장한 <ul><li> 문단을 <div> 문단으로 되돌린다.
+// 문단기호를 li 는 list-disc 마커로, div 는 ::before 로 그리던 탓에 두 모양이 섞여 보였다.
+function paragraphsFromLists(html: string) {
+  if (typeof document === "undefined" || !/<(ul|ol|li)\b/i.test(html)) return html;
+  const holder = document.createElement("div");
+  holder.innerHTML = html;
+  holder.querySelectorAll("ul, ol").forEach((list) => {
+    const fragment = document.createDocumentFragment();
+    list.querySelectorAll(":scope > li").forEach((item) => {
+      const paragraph = document.createElement("div");
+      paragraph.innerHTML = item.innerHTML.trim() || "<br>";
+      fragment.append(paragraph);
+    });
+    list.replaceWith(fragment);
+  });
+  return holder.innerHTML;
+}
+
 function restoreEmptyParagraph(editor: HTMLDivElement) {
   if (editor.textContent?.trim() || editor.querySelector("div, li")) return;
   editor.innerHTML = "<div><br></div>";
@@ -180,6 +199,7 @@ export function WorkJournal() {
   const entryIdsRef = useRef(new Map<string, string>());
   const selectionRef = useRef<Range | null>(null);
   const selectedEditorRef = useRef<HTMLDivElement | null>(null);
+  const selectedDateRef = useRef<string | null>(null);
   const [employeeId, setEmployeeId] = useState<string | null>(null);
   const [authUid, setAuthUid] = useState<string | null>(null);
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
@@ -192,6 +212,8 @@ export function WorkJournal() {
   const [showArchive, setShowArchive] = useState(false);
   const [loading, setLoading] = useState(true);
   const [textPaletteOpen, setTextPaletteOpen] = useState(false);
+  const [sizeMenuOpen, setSizeMenuOpen] = useState(false);
+  const [fontSize, setFontSize] = useState(14);
   const [notePaletteId, setNotePaletteId] = useState<string | null>(null);
   const [schedulePrompt, setSchedulePrompt] = useState<SchedulePrompt | null>(null);
   const [scheduleSaving, setScheduleSaving] = useState(false);
@@ -213,13 +235,32 @@ export function WorkJournal() {
     return () => { active = false; };
   }, [supabase]);
 
+  // 드래그가 에디터 밖에서 끝나도 선택 영역을 붙잡아 둔다. 툴바는 mousedown 을 막아
+  // 포커스를 옮기지 않으므로, 여기 저장된 range 로 execCommand 를 그대로 적용할 수 있다.
+  useEffect(() => {
+    const onSelectionChange = () => {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return;
+      const range = selection.getRangeAt(0);
+      const node = range.commonAncestorContainer;
+      const element = node instanceof Element ? node : node.parentElement;
+      const editor = element?.closest<HTMLDivElement>("[data-journal-date]");
+      if (!editor) return;
+      selectedEditorRef.current = editor;
+      selectedDateRef.current = editor.dataset.journalDate ?? null;
+      selectionRef.current = range.collapsed ? null : range.cloneRange();
+    };
+    document.addEventListener("selectionchange", onSelectionChange);
+    return () => document.removeEventListener("selectionchange", onSelectionChange);
+  }, []);
+
   const loadEntries = useCallback(async () => {
     if (!employeeId) return;
     const { data, error } = await supabase.from("work_journal_entries").select("*").eq("employee_id", employeeId)
       .gte("journal_date", dateKey(weekStart)).lte("journal_date", dateKey(addDays(weekStart, 6))).order("created_at");
     if (error) toast.error("주간 업무일지를 불러오지 못했습니다.");
     else {
-      const loaded = (data ?? []) as JournalEntry[];
+      const loaded = ((data ?? []) as JournalEntry[]).map((entry) => ({ ...entry, content: paragraphsFromLists(entry.content) }));
       entryIdsRef.current = new Map(loaded.map((entry) => [entry.journal_date, entry.id]));
       setEntries(loaded);
     }
@@ -256,9 +297,8 @@ export function WorkJournal() {
     return () => { active = false; };
   }, [employeeId, loadEntries, loadNotes, loadWorkTasks]);
 
-  const saveDay = async (day: Date, content: string) => {
+  const saveDay = async (key: string, content: string) => {
     if (!employeeId) return;
-    const key = dateKey(day);
     const existingId = entryIdsRef.current.get(key);
     if (existingId) {
       const { error } = await supabase.from("work_journal_entries").update({ content, updated_at: new Date().toISOString() }).eq("id", existingId);
@@ -314,13 +354,11 @@ export function WorkJournal() {
     else setWorkTasks((current) => current.filter((item) => item.id !== task.id));
   };
 
-  const rememberSelection = (day: Date, editor: HTMLDivElement) => {
+  const maybePromptSchedule = (day: Date, editor: HTMLDivElement) => {
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0 || !selection.toString().trim()) return;
     const range = selection.getRangeAt(0);
     if (!editor.contains(range.commonAncestorContainer)) return;
-    selectionRef.current = range.cloneRange();
-    selectedEditorRef.current = editor;
     const parsed = parseSelectedSchedule(selection.toString(), day);
     if (!parsed) return;
     const rect = range.getBoundingClientRect();
@@ -333,28 +371,43 @@ export function WorkJournal() {
     });
   };
 
-  const applyTextFormat = (command: "fontSize" | "foreColor", value: string) => {
+  // execCommand 는 편집 대상이 포커스를 쥐고 있을 때만 동작하므로 focus -> range 복원 -> 실행 순서를 지킨다.
+  const restoreSelection = () => {
+    const editor = selectedEditorRef.current;
     const range = selectionRef.current;
-    if (!range) {
-      toast.info("먼저 서식을 바꿀 글자를 드래그해 선택하세요.");
-      return;
-    }
+    if (!editor || !range || range.collapsed) return null;
+    editor.focus();
     const selection = window.getSelection();
     selection?.removeAllRanges();
     selection?.addRange(range);
-    document.execCommand("styleWithCSS", false, "true");
+    return editor;
+  };
+
+  const applyTextFormat = (command: "fontSize" | "foreColor", value: string) => {
+    setTextPaletteOpen(false);
+    setSizeMenuOpen(false);
+    const editor = restoreSelection();
+    const journalDate = selectedDateRef.current;
+    if (!editor || !journalDate) {
+      toast.info("먼저 서식을 바꿀 글자를 드래그해 선택하세요.");
+      return;
+    }
     if (command === "fontSize") {
+      // styleWithCSS 를 켜면 크롬이 <span style="font-size:xxx-large"> 를 만들어 px 지정이 먹지 않는다.
+      // 꺼야 <font size="7"> 이 나오고, 그 자리에 원하는 px 를 직접 씌울 수 있다.
+      document.execCommand("styleWithCSS", false, "false");
       document.execCommand("fontSize", false, "7");
-      selectedEditorRef.current?.querySelectorAll('font[size="7"]').forEach((element) => {
+      editor.querySelectorAll('font[size="7"]').forEach((element) => {
         (element as HTMLElement).style.fontSize = `${value}px`;
         element.removeAttribute("size");
       });
     } else {
-      document.execCommand(command, false, value);
+      document.execCommand("styleWithCSS", false, "true");
+      document.execCommand("foreColor", false, value);
     }
+    const selection = window.getSelection();
     selectionRef.current = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
-    selectedEditorRef.current?.focus();
-    setTextPaletteOpen(false);
+    void saveDay(journalDate, editor.innerHTML);
   };
 
   const createSchedule = async () => {
@@ -372,16 +425,11 @@ export function WorkJournal() {
     });
     if (error) toast.error("일정 등록에 실패했습니다.");
     else {
-      const range = selectionRef.current;
-      const editor = selectedEditorRef.current;
-      if (range && editor) {
-        const selection = window.getSelection();
-        selection?.removeAllRanges();
-        selection?.addRange(range);
+      const editor = restoreSelection();
+      if (editor) {
         document.execCommand("styleWithCSS", false, "true");
         document.execCommand("hiliteColor", false, "#fef08a");
-        const journalDay = new Date(`${schedulePrompt.journalDate}T00:00:00`);
-        await saveDay(journalDay, editor.innerHTML);
+        await saveDay(schedulePrompt.journalDate, editor.innerHTML);
       }
       toast.success("워크스페이스 일정에 등록했습니다.");
       setSchedulePrompt(null);
@@ -463,13 +511,15 @@ export function WorkJournal() {
         <div
           contentEditable
           suppressContentEditableWarning
+          data-journal-date={dateKey(day)}
           onFocus={(event) => {
             selectedEditorRef.current = event.currentTarget;
+            selectedDateRef.current = dateKey(day);
             restoreEmptyParagraph(event.currentTarget);
           }}
           onInput={(event) => restoreEmptyParagraph(event.currentTarget)}
-          onMouseUp={(event) => rememberSelection(day, event.currentTarget)}
-          onKeyUp={(event) => rememberSelection(day, event.currentTarget)}
+          onMouseUp={(event) => maybePromptSchedule(day, event.currentTarget)}
+          onKeyUp={(event) => maybePromptSchedule(day, event.currentTarget)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && event.shiftKey) {
               event.preventDefault();
@@ -483,12 +533,14 @@ export function WorkJournal() {
               if (!element?.closest("li, div[contenteditable] > div")) document.execCommand("formatBlock", false, "div");
             }
           }}
-          onBlur={(event) => void saveDay(day, event.currentTarget.innerHTML)}
+          onBlur={(event) => void saveDay(dateKey(day), event.currentTarget.innerHTML)}
           dangerouslySetInnerHTML={{ __html: editorHtml(entry?.content ?? "") }}
           className={cn(
             "min-h-0 flex-1 cursor-text overflow-y-auto p-3 text-[14px] leading-relaxed text-slate-700 outline-none",
-            "[&_ul]:m-0 [&_ul]:list-disc [&_ul]:space-y-1.5 [&_ul]:pl-4 [&_li]:pl-0.5",
-            "[&>div]:relative [&>div]:min-h-[1.5em] [&>div]:pl-4 [&>div]:before:absolute [&>div]:before:left-0 [&>div]:before:content-['•']",
+            // li 가 남아 있어도 div 문단과 같은 문단기호로 보이도록 마커 대신 ::before 로 통일한다.
+            "[&_ul]:m-0 [&_ul]:list-none [&_ul]:p-0 [&_ol]:m-0 [&_ol]:list-none [&_ol]:p-0",
+            "[&>div]:relative [&>div]:min-h-[1.5em] [&>div]:pl-4 [&>div]:before:absolute [&>div]:before:left-0 [&>div]:before:text-[14px] [&>div]:before:content-['•']",
+            "[&_li]:relative [&_li]:min-h-[1.5em] [&_li]:pl-4 [&_li]:before:absolute [&_li]:before:left-0 [&_li]:before:text-[14px] [&_li]:before:content-['•']",
             "focus:bg-white/25"
           )}
         />
@@ -544,13 +596,16 @@ export function WorkJournal() {
                 <div className="min-w-44 text-center"><p className="text-[10px] text-muted-foreground">{format(weekStart, "yyyy년", { locale: ko })}</p><h2 className="text-sm font-semibold">{format(weekStart, "M월 d일")} – {format(addDays(weekStart, 6), "M월 d일")}</h2></div>
                 <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setWeekStart((date) => addWeeks(date, 1))} aria-label="다음 주"><ChevronRight className="h-4 w-4" /></Button>
               </div>
+              {/* 네이티브 select 는 mousedown 기본 동작으로 목록을 열기 때문에, 선택 영역을 지키려고 건 preventDefault 에
+                  막혀 아예 열리지 않는다. 버튼 드롭다운으로 대체한다. */}
               <div className="flex items-center gap-1 rounded-xl border border-border/70 bg-white/70 p-1" onMouseDown={(event) => event.preventDefault()}>
                 <Type className="mx-1 h-4 w-4 text-muted-foreground" />
-                <select aria-label="선택 글자 크기" defaultValue="14" onChange={(event) => applyTextFormat("fontSize", event.target.value)} className="h-7 rounded-lg bg-transparent px-1 text-xs outline-none">
-                  {FONT_SIZES.map((size) => <option key={size} value={size}>{size}px</option>)}
-                </select>
                 <div className="relative">
-                  <button type="button" onClick={() => setTextPaletteOpen((open) => !open)} className="rounded-lg p-1.5 hover:bg-muted" title="선택 글자 색상"><Palette className="h-4 w-4" /></button>
+                  <button type="button" onClick={() => { setSizeMenuOpen((open) => !open); setTextPaletteOpen(false); }} className="flex h-7 items-center gap-1 rounded-lg px-2 text-xs hover:bg-muted" aria-label="선택 글자 크기">{fontSize}px<ChevronDown className="h-3 w-3 opacity-60" /></button>
+                  {sizeMenuOpen ? <div className="absolute left-1/2 top-9 z-40 flex -translate-x-1/2 flex-col rounded-xl border bg-popover p-1 shadow-md">{FONT_SIZES.map((size) => <button type="button" key={size} onClick={() => { setFontSize(size); applyTextFormat("fontSize", String(size)); }} className={cn("rounded-md px-3 py-1 text-xs hover:bg-muted", size === fontSize && "bg-muted font-semibold")}>{size}px</button>)}</div> : null}
+                </div>
+                <div className="relative">
+                  <button type="button" onClick={() => { setTextPaletteOpen((open) => !open); setSizeMenuOpen(false); }} className="rounded-lg p-1.5 hover:bg-muted" title="선택 글자 색상"><Palette className="h-4 w-4" /></button>
                   {textPaletteOpen ? <div className="absolute left-1/2 top-9 z-40 flex -translate-x-1/2 gap-1 rounded-xl border bg-popover p-2 shadow-md">{TEXT_COLORS.map((color) => <button type="button" key={color} onClick={() => applyTextFormat("foreColor", color)} className="h-5 w-5 rounded-full ring-1 ring-black/10 hover:scale-110" style={{ backgroundColor: color }} aria-label={`글자색 ${color}`} />)}</div> : null}
                 </div>
                 <span className="px-1 text-[10px] text-muted-foreground">글자를 드래그해 적용</span>
