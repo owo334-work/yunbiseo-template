@@ -75,6 +75,7 @@ type SchedulePrompt = {
   date: string;
   content: string;
   journalDate: string;
+  markerId: string;
 };
 
 type FormatBubble = {
@@ -259,6 +260,7 @@ export function WorkJournal() {
   const supabase = useMemo(() => createClient(), []);
   const boardRef = useRef<HTMLDivElement>(null);
   const entryIdsRef = useRef(new Map<string, string>());
+  const entryContentsRef = useRef(new Map<string, string>());
   const selectionRef = useRef<Range | null>(null);
   const selectedEditorRef = useRef<HTMLDivElement | null>(null);
   const selectedDateRef = useRef<string | null>(null);
@@ -315,6 +317,7 @@ export function WorkJournal() {
   }, []);
 
   const goToWeek = useCallback((date: Date) => {
+    setLoading(true);
     setWeekStart(startOfWeek(date, { weekStartsOn: 1 }));
     setBubble(null);
   }, []);
@@ -327,6 +330,7 @@ export function WorkJournal() {
     else {
       const loaded = ((data ?? []) as JournalEntry[]).map((entry) => ({ ...entry, content: paragraphsFromLists(entry.content) }));
       entryIdsRef.current = new Map(loaded.map((entry) => [entry.journal_date, entry.id]));
+      entryContentsRef.current = new Map(loaded.map((entry) => [entry.journal_date, entry.content]));
       setEntries(loaded);
     }
   }, [employeeId, supabase, weekStart]);
@@ -379,6 +383,7 @@ export function WorkJournal() {
 
   const saveDay = async (key: string, content: string) => {
     if (!employeeId) return;
+    entryContentsRef.current.set(key, content);
     const existingId = entryIdsRef.current.get(key);
     if (existingId) {
       const { error } = await supabase.from("work_journal_entries").update({ content, updated_at: new Date().toISOString() }).eq("id", existingId);
@@ -450,6 +455,7 @@ export function WorkJournal() {
       journalDate: dateKey(day),
       schedule: parseSelectedSchedule(selection.toString(), day),
     });
+    entryContentsRef.current.set(dateKey(day), editor.innerHTML);
   };
 
   const applyFormat = (styler: (span: HTMLSpanElement) => void) => {
@@ -467,7 +473,44 @@ export function WorkJournal() {
       selection?.removeAllRanges();
       selection?.addRange(next);
     }
+    entryContentsRef.current.set(journalDate, editor.innerHTML);
     void saveDay(journalDate, editor.innerHTML);
+  };
+
+  const openSchedulePrompt = (formatBubble: FormatBubble) => {
+    const editor = selectedEditorRef.current;
+    const range = selectionRef.current;
+    const schedule = formatBubble.schedule;
+    if (!editor || !range || range.collapsed || !schedule) return;
+    const markerId = crypto.randomUUID();
+    const markedRange = styleRange(range, (span) => { span.dataset.scheduleMarker = markerId; });
+    if (markedRange) selectionRef.current = markedRange.cloneRange();
+    entryContentsRef.current.set(formatBubble.journalDate, editor.innerHTML);
+    void saveDay(formatBubble.journalDate, editor.innerHTML);
+    setSchedulePrompt({
+      x: formatBubble.x,
+      y: formatBubble.y,
+      journalDate: formatBubble.journalDate,
+      markerId,
+      ...schedule,
+    });
+    setBubble(null);
+  };
+
+  const clearScheduleMarker = (prompt: SchedulePrompt) => {
+    const editor = selectedEditorRef.current;
+    if (!editor) return;
+    editor.querySelectorAll<HTMLElement>(`[data-schedule-marker="${prompt.markerId}"]`).forEach((marker) => {
+      marker.removeAttribute("data-schedule-marker");
+      if (!marker.getAttribute("style")) marker.replaceWith(...Array.from(marker.childNodes));
+    });
+    entryContentsRef.current.set(prompt.journalDate, editor.innerHTML);
+    void saveDay(prompt.journalDate, editor.innerHTML);
+  };
+
+  const cancelSchedulePrompt = () => {
+    if (schedulePrompt) clearScheduleMarker(schedulePrompt);
+    setSchedulePrompt(null);
   };
 
   const createSchedule = async () => {
@@ -486,9 +529,13 @@ export function WorkJournal() {
     if (error) toast.error("일정 등록에 실패했습니다.");
     else {
       const editor = selectedEditorRef.current;
-      const range = selectionRef.current;
-      if (editor && range && !range.collapsed) {
-        styleRange(range, (span) => { span.style.backgroundColor = "#fef08a"; });
+      if (editor) {
+        editor.querySelectorAll<HTMLElement>(`[data-schedule-marker="${schedulePrompt.markerId}"]`).forEach((marker) => {
+          marker.style.backgroundColor = "#fef08a";
+          marker.style.borderRadius = "0.2em";
+          marker.removeAttribute("data-schedule-marker");
+        });
+        entryContentsRef.current.set(schedulePrompt.journalDate, editor.innerHTML);
         await saveDay(schedulePrompt.journalDate, editor.innerHTML);
       }
       toast.success("워크스페이스 일정에 등록했습니다.");
@@ -575,6 +622,13 @@ export function WorkJournal() {
           <span className="ml-1.5 text-[10px] font-medium text-muted-foreground">{format(day, "EEE", { locale: ko })}</span>
         </div>
         <div
+          ref={(node) => {
+            const key = dateKey(day);
+            if (node && node.dataset.initialized !== key) {
+              node.innerHTML = editorHtml(entry?.content ?? "");
+              node.dataset.initialized = key;
+            }
+          }}
           contentEditable
           suppressContentEditableWarning
           data-journal-date={dateKey(day)}
@@ -583,7 +637,10 @@ export function WorkJournal() {
             selectedDateRef.current = dateKey(day);
             restoreEmptyParagraph(event.currentTarget);
           }}
-          onInput={(event) => restoreEmptyParagraph(event.currentTarget)}
+          onInput={(event) => {
+            restoreEmptyParagraph(event.currentTarget);
+            entryContentsRef.current.set(dateKey(day), event.currentTarget.innerHTML);
+          }}
           onMouseUp={(event) => showFormatBubble(day, event.currentTarget)}
           onKeyUp={(event) => showFormatBubble(day, event.currentTarget)}
           onKeyDown={(event) => {
@@ -600,7 +657,6 @@ export function WorkJournal() {
             }
           }}
           onBlur={(event) => void saveDay(dateKey(day), event.currentTarget.innerHTML)}
-          dangerouslySetInnerHTML={{ __html: editorHtml(entry?.content ?? "") }}
           className={cn(
             "min-h-0 flex-1 cursor-text overflow-y-auto p-3 text-[14px] leading-relaxed text-slate-700 outline-none",
             // li 가 남아 있어도 div 문단과 같은 문단기호로 보이도록 마커 대신 ::before 로 통일한다.
@@ -764,7 +820,7 @@ export function WorkJournal() {
           {bubble.schedule ? (
             <>
               <span className="mx-0.5 h-5 w-px bg-border" />
-              <button type="button" onClick={() => { setSchedulePrompt({ x: bubble.x, y: bubble.y, journalDate: bubble.journalDate, ...bubble.schedule! }); setBubble(null); }} className="flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium text-primary hover:bg-primary/10">
+              <button type="button" onClick={() => openSchedulePrompt(bubble)} className="flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium text-primary hover:bg-primary/10">
                 <CalendarCheck className="h-3.5 w-3.5" />일정 등록
               </button>
             </>
@@ -774,10 +830,10 @@ export function WorkJournal() {
 
       {schedulePrompt ? (
         <div className="fixed z-[80] w-[288px] rounded-2xl border border-primary/30 bg-white p-3 shadow-lg" style={{ left: schedulePrompt.x, top: schedulePrompt.y }}>
-          <div className="mb-2 flex items-center justify-between"><div className="flex items-center gap-1.5 text-sm font-semibold text-primary"><CalendarCheck className="h-4 w-4" />일정 등록</div><button type="button" onClick={() => setSchedulePrompt(null)} className="rounded p-1 hover:bg-muted"><X className="h-4 w-4" /></button></div>
+          <div className="mb-2 flex items-center justify-between"><div className="flex items-center gap-1.5 text-sm font-semibold text-primary"><CalendarCheck className="h-4 w-4" />일정 등록</div><button type="button" onClick={cancelSchedulePrompt} className="rounded p-1 hover:bg-muted"><X className="h-4 w-4" /></button></div>
           <label className="block text-[10px] font-medium text-muted-foreground">날짜<input type="date" value={schedulePrompt.date} onChange={(event) => setSchedulePrompt((current) => current ? { ...current, date: event.target.value } : null)} className="mt-1 h-8 w-full rounded-lg border px-2 text-xs text-foreground" /></label>
           <label className="mt-2 block text-[10px] font-medium text-muted-foreground">내용<textarea value={schedulePrompt.content} onChange={(event) => setSchedulePrompt((current) => current ? { ...current, content: event.target.value } : null)} className="mt-1 min-h-16 w-full resize-none rounded-lg border p-2 text-xs text-foreground outline-none focus:ring-1 focus:ring-primary" /></label>
-          <div className="mt-2 flex justify-end gap-1.5"><Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setSchedulePrompt(null)}>취소</Button><Button size="sm" className="h-7 text-xs" disabled={scheduleSaving} onClick={() => void createSchedule()}>{scheduleSaving ? "등록 중" : "확인"}</Button></div>
+          <div className="mt-2 flex justify-end gap-1.5"><Button variant="outline" size="sm" className="h-7 text-xs" onClick={cancelSchedulePrompt}>취소</Button><Button size="sm" className="h-7 text-xs" disabled={scheduleSaving} onClick={() => void createSchedule()}>{scheduleSaving ? "등록 중" : "확인"}</Button></div>
         </div>
       ) : null}
     </div>
