@@ -20,7 +20,6 @@ import {
   Archive,
   ArchiveRestore,
   CalendarCheck,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   GripHorizontal,
@@ -78,9 +77,20 @@ type SchedulePrompt = {
   journalDate: string;
 };
 
+type FormatBubble = {
+  x: number;
+  y: number;
+  journalDate: string;
+  schedule: { date: string; content: string } | null;
+};
+
 const NOTE_COLORS = ["#fef3c7", "#dbeafe", "#dcfce7", "#fce7f3", "#ede9fe", "#f1f5f9"];
 const TEXT_COLORS = ["#334155", "#0f766e", "#1d4ed8", "#7e22ce", "#be123c", "#111827"];
 const FONT_SIZES = [12, 14, 16, 18, 22, 26];
+// work_journal_notes 의 CHECK 제약과 같은 범위를 써야 저장이 거부되지 않는다.
+const NOTE_MIN_WIDTH = 160;
+const NOTE_MIN_HEIGHT = 120;
+const NOTE_MAX_SIZE = 2400;
 const ROUTINE_LISTS: Array<{ key: WorkListType; label: string }> = [
   { key: "daily", label: "일간" },
   { key: "weekly", label: "주간" },
@@ -134,6 +144,58 @@ function restoreEmptyParagraph(editor: HTMLDivElement) {
   const selection = window.getSelection();
   selection?.removeAllRanges();
   selection?.addRange(range);
+}
+
+// document.execCommand 는 편집 대상이 포커스를 쥐고 있어야 하고 styleWithCSS 동작도 브라우저마다 달라
+// 서식이 조용히 무시되곤 한다. 선택 영역의 텍스트 노드를 직접 <span> 으로 감싸 확실하게 서식을 입힌다.
+// 새로 만들어진 선택 영역을 돌려주므로 호출한 쪽에서 드래그 상태를 이어갈 수 있다.
+function styleRange(range: Range, styler: (span: HTMLSpanElement) => void) {
+  if (range.collapsed) return null;
+
+  // 끝을 먼저 잘라야 시작 오프셋이 밀리지 않는다. splitText 는 살아 있는 Range 를 알아서 보정한다.
+  const end = range.endContainer;
+  if (end.nodeType === Node.TEXT_NODE && range.endOffset < (end as Text).data.length) {
+    (end as Text).splitText(range.endOffset);
+  }
+  const start = range.startContainer;
+  if (start.nodeType === Node.TEXT_NODE && range.startOffset > 0) {
+    const tail = (start as Text).splitText(range.startOffset);
+    range.setStart(tail, 0);
+    if (start === end) range.setEnd(tail, tail.data.length);
+  }
+
+  const root = range.commonAncestorContainer;
+  const targets: Text[] = [];
+  if (root.nodeType === Node.TEXT_NODE) {
+    targets.push(root as Text);
+  } else {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const text = node as Text;
+      // 경계를 잘라뒀으므로 선택에 걸친 텍스트 노드는 통째로 안에 들어온다.
+      if (text.data && range.comparePoint(text, 0) === 0 && range.comparePoint(text, text.data.length) === 0) targets.push(text);
+    }
+  }
+  if (targets.length === 0) return null;
+
+  const wrapped = targets.map((text) => {
+    const parent = text.parentElement;
+    // 이 글자만 감싸고 있는 span 이면 새로 만들지 않고 스타일만 덧입힌다.
+    if (parent && parent !== root && parent.tagName === "SPAN" && parent.childNodes.length === 1) {
+      styler(parent as HTMLSpanElement);
+      return parent;
+    }
+    const span = document.createElement("span");
+    styler(span);
+    text.replaceWith(span);
+    span.append(text);
+    return span;
+  });
+
+  const next = document.createRange();
+  next.setStartBefore(wrapped[0]);
+  next.setEndAfter(wrapped[wrapped.length - 1]);
+  return next;
 }
 
 function parseSelectedSchedule(text: string, fallback: Date) {
@@ -211,9 +273,7 @@ export function WorkJournal() {
   const [routineInput, setRoutineInput] = useState<Record<string, string>>({});
   const [showArchive, setShowArchive] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [textPaletteOpen, setTextPaletteOpen] = useState(false);
-  const [sizeMenuOpen, setSizeMenuOpen] = useState(false);
-  const [fontSize, setFontSize] = useState(14);
+  const [bubble, setBubble] = useState<FormatBubble | null>(null);
   const [notePaletteId, setNotePaletteId] = useState<string | null>(null);
   const [schedulePrompt, setSchedulePrompt] = useState<SchedulePrompt | null>(null);
   const [scheduleSaving, setScheduleSaving] = useState(false);
@@ -235,8 +295,7 @@ export function WorkJournal() {
     return () => { active = false; };
   }, [supabase]);
 
-  // 드래그가 에디터 밖에서 끝나도 선택 영역을 붙잡아 둔다. 툴바는 mousedown 을 막아
-  // 포커스를 옮기지 않으므로, 여기 저장된 range 로 execCommand 를 그대로 적용할 수 있다.
+  // 드래그가 에디터 밖에서 끝나도 선택 영역을 붙잡아 둔다. 선택이 풀리면 서식 팝업도 닫는다.
   useEffect(() => {
     const onSelectionChange = () => {
       const selection = window.getSelection();
@@ -249,9 +308,15 @@ export function WorkJournal() {
       selectedEditorRef.current = editor;
       selectedDateRef.current = editor.dataset.journalDate ?? null;
       selectionRef.current = range.collapsed ? null : range.cloneRange();
+      if (range.collapsed) setBubble(null);
     };
     document.addEventListener("selectionchange", onSelectionChange);
     return () => document.removeEventListener("selectionchange", onSelectionChange);
+  }, []);
+
+  const goToWeek = useCallback((date: Date) => {
+    setWeekStart(startOfWeek(date, { weekStartsOn: 1 }));
+    setBubble(null);
   }, []);
 
   const loadEntries = useCallback(async () => {
@@ -287,15 +352,30 @@ export function WorkJournal() {
     setSentRequests((sentResult.data ?? []) as SentRequest[]);
   }, [authUid, employeeId, supabase]);
 
+  // 주를 옮기면 업무일지만 다시 읽는다. 메모보드까지 같이 불러오면 옮겨둔 메모지가 매번 다시 그려진다.
   useEffect(() => {
     if (!employeeId) return;
     let active = true;
     queueMicrotask(() => {
       if (!active) return;
-      void Promise.all([loadEntries(), loadNotes(), loadWorkTasks()]).finally(() => { if (active) setLoading(false); });
+      void loadEntries().finally(() => { if (active) setLoading(false); });
     });
     return () => { active = false; };
-  }, [employeeId, loadEntries, loadNotes, loadWorkTasks]);
+  }, [employeeId, loadEntries]);
+
+  useEffect(() => {
+    if (!employeeId) return;
+    let active = true;
+    queueMicrotask(() => { if (active) void loadNotes(); });
+    return () => { active = false; };
+  }, [employeeId, loadNotes]);
+
+  useEffect(() => {
+    if (!employeeId || !authUid) return;
+    let active = true;
+    queueMicrotask(() => { if (active) void loadWorkTasks(); });
+    return () => { active = false; };
+  }, [authUid, employeeId, loadWorkTasks]);
 
   const saveDay = async (key: string, content: string) => {
     if (!employeeId) return;
@@ -354,59 +434,39 @@ export function WorkJournal() {
     else setWorkTasks((current) => current.filter((item) => item.id !== task.id));
   };
 
-  const maybePromptSchedule = (day: Date, editor: HTMLDivElement) => {
+  // 드래그가 끝나면 선택 글자 바로 옆에 서식 팝업을 띄운다. 날짜가 섞여 있으면 일정 등록 버튼도 함께 보여준다.
+  const showFormatBubble = (day: Date, editor: HTMLDivElement) => {
     const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0 || !selection.toString().trim()) return;
+    if (!selection || selection.rangeCount === 0 || !selection.toString().trim()) {
+      setBubble(null);
+      return;
+    }
     const range = selection.getRangeAt(0);
     if (!editor.contains(range.commonAncestorContainer)) return;
-    const parsed = parseSelectedSchedule(selection.toString(), day);
-    if (!parsed) return;
     const rect = range.getBoundingClientRect();
-    setSchedulePrompt({
-      x: Math.min(window.innerWidth - 300, Math.max(12, rect.left)),
-      y: Math.min(window.innerHeight - 220, rect.bottom + 8),
-      date: parsed.date,
-      content: parsed.content,
+    setBubble({
+      x: Math.min(window.innerWidth - 312, Math.max(12, rect.left)),
+      y: Math.min(window.innerHeight - 96, rect.bottom + 8),
       journalDate: dateKey(day),
+      schedule: parseSelectedSchedule(selection.toString(), day),
     });
   };
 
-  // execCommand 는 편집 대상이 포커스를 쥐고 있을 때만 동작하므로 focus -> range 복원 -> 실행 순서를 지킨다.
-  const restoreSelection = () => {
+  const applyFormat = (styler: (span: HTMLSpanElement) => void) => {
     const editor = selectedEditorRef.current;
     const range = selectionRef.current;
-    if (!editor || !range || range.collapsed) return null;
-    editor.focus();
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-    return editor;
-  };
-
-  const applyTextFormat = (command: "fontSize" | "foreColor", value: string) => {
-    setTextPaletteOpen(false);
-    setSizeMenuOpen(false);
-    const editor = restoreSelection();
     const journalDate = selectedDateRef.current;
-    if (!editor || !journalDate) {
+    if (!editor || !range || range.collapsed || !journalDate) {
       toast.info("먼저 서식을 바꿀 글자를 드래그해 선택하세요.");
       return;
     }
-    if (command === "fontSize") {
-      // styleWithCSS 를 켜면 크롬이 <span style="font-size:xxx-large"> 를 만들어 px 지정이 먹지 않는다.
-      // 꺼야 <font size="7"> 이 나오고, 그 자리에 원하는 px 를 직접 씌울 수 있다.
-      document.execCommand("styleWithCSS", false, "false");
-      document.execCommand("fontSize", false, "7");
-      editor.querySelectorAll('font[size="7"]').forEach((element) => {
-        (element as HTMLElement).style.fontSize = `${value}px`;
-        element.removeAttribute("size");
-      });
-    } else {
-      document.execCommand("styleWithCSS", false, "true");
-      document.execCommand("foreColor", false, value);
+    const next = styleRange(range, styler);
+    if (next) {
+      selectionRef.current = next.cloneRange();
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(next);
     }
-    const selection = window.getSelection();
-    selectionRef.current = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
     void saveDay(journalDate, editor.innerHTML);
   };
 
@@ -425,10 +485,10 @@ export function WorkJournal() {
     });
     if (error) toast.error("일정 등록에 실패했습니다.");
     else {
-      const editor = restoreSelection();
-      if (editor) {
-        document.execCommand("styleWithCSS", false, "true");
-        document.execCommand("hiliteColor", false, "#fef08a");
+      const editor = selectedEditorRef.current;
+      const range = selectionRef.current;
+      if (editor && range && !range.collapsed) {
+        styleRange(range, (span) => { span.style.backgroundColor = "#fef08a"; });
         await saveDay(schedulePrompt.journalDate, editor.innerHTML);
       }
       toast.success("워크스페이스 일정에 등록했습니다.");
@@ -449,10 +509,14 @@ export function WorkJournal() {
     else { setNotes((current) => [...current, data as BoardNote]); setShowArchive(false); }
   };
 
-  const updateNote = async (id: string, patch: Partial<BoardNote>, quiet = false) => {
+  const updateNote = async (id: string, patch: Partial<BoardNote>) => {
     setNotes((current) => current.map((note) => note.id === id ? { ...note, ...patch } : note));
     const { error } = await supabase.from("work_journal_notes").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", id);
-    if (error && !quiet) toast.error("메모지를 저장하지 못했습니다.");
+    if (error) {
+      // 저장 실패를 조용히 넘기면 화면에만 반영된 채 새로고침에서 되돌아간다.
+      toast.error("메모지를 저장하지 못했습니다.");
+      void loadNotes();
+    }
   };
 
   const removeNote = async (id: string) => {
@@ -470,18 +534,20 @@ export function WorkJournal() {
     const initial = { ...note };
     let finalPosition = { ...initial };
     const board = boardRef.current;
+    // clientX/Y 는 배율·확대 상태에서 소수가 되는데, 컬럼이 integer 라 소수를 보내면 저장이 통째로 거부된다.
+    const clamp = (value: number, min: number, max: number) => Math.round(Math.min(Math.max(value, min), Math.max(min, max)));
     const onMove = (pointer: PointerEvent) => {
       const dx = pointer.clientX - startX;
       const dy = pointer.clientY - startY;
       if (mode === "move") {
         finalPosition = { ...finalPosition,
-          position_x: Math.max(0, Math.min(Math.max(0, board.clientWidth - initial.width), initial.position_x + dx)),
-          position_y: Math.max(0, Math.min(Math.max(0, board.clientHeight - initial.height), initial.position_y + dy)),
+          position_x: clamp(initial.position_x + dx, 0, board.clientWidth - initial.width),
+          position_y: clamp(initial.position_y + dy, 0, board.clientHeight - initial.height),
         };
       } else {
         finalPosition = { ...finalPosition,
-          width: Math.max(160, Math.min(board.clientWidth - initial.position_x, initial.width + dx)),
-          height: Math.max(120, Math.min(board.clientHeight - initial.position_y, initial.height + dy)),
+          width: clamp(initial.width + dx, NOTE_MIN_WIDTH, Math.min(NOTE_MAX_SIZE, board.clientWidth - initial.position_x)),
+          height: clamp(initial.height + dy, NOTE_MIN_HEIGHT, Math.min(NOTE_MAX_SIZE, board.clientHeight - initial.position_y)),
         };
       }
       setNotes((current) => current.map((item) => item.id === note.id ? { ...item, ...finalPosition } : item));
@@ -491,7 +557,7 @@ export function WorkJournal() {
       window.removeEventListener("pointerup", onUp);
       void updateNote(note.id, mode === "move"
         ? { position_x: finalPosition.position_x, position_y: finalPosition.position_y }
-        : { width: finalPosition.width, height: finalPosition.height }, true);
+        : { width: finalPosition.width, height: finalPosition.height });
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp, { once: true });
@@ -518,8 +584,8 @@ export function WorkJournal() {
             restoreEmptyParagraph(event.currentTarget);
           }}
           onInput={(event) => restoreEmptyParagraph(event.currentTarget)}
-          onMouseUp={(event) => maybePromptSchedule(day, event.currentTarget)}
-          onKeyUp={(event) => maybePromptSchedule(day, event.currentTarget)}
+          onMouseUp={(event) => showFormatBubble(day, event.currentTarget)}
+          onKeyUp={(event) => showFormatBubble(day, event.currentTarget)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && event.shiftKey) {
               event.preventDefault();
@@ -556,7 +622,7 @@ export function WorkJournal() {
           <h1 className="page-title-gradient text-xl font-semibold tracking-tight">업무일지</h1>
           <p className="text-xs text-muted-foreground">기록할 글자를 선택하면 서식을 바꾸거나 일정으로 등록할 수 있습니다.</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => { const today = new Date(); setWeekStart(startOfWeek(today, { weekStartsOn: 1 })); setCalendarMonth(startOfMonth(today)); }}><RotateCcw className="mr-1.5 h-4 w-4" />이번 주</Button>
+        <Button variant="outline" size="sm" onClick={() => { const today = new Date(); goToWeek(today); setCalendarMonth(startOfMonth(today)); }}><RotateCcw className="mr-1.5 h-4 w-4" />이번 주</Button>
       </header>
 
       <ResizablePanelGroup orientation="horizontal" className="min-h-[880px] flex-1">
@@ -566,7 +632,7 @@ export function WorkJournal() {
           <ResizablePanel defaultSize={58} minSize={34}>
         <div className="surface-panel flex h-full min-w-0 flex-col overflow-hidden rounded-[1.5rem] border border-border/60 bg-card/80 shadow-sm backdrop-blur">
           <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border/60 p-3">
-            <MiniCalendar month={calendarMonth} selected={weekStart} onMonthChange={setCalendarMonth} onSelect={(date) => { setWeekStart(startOfWeek(date, { weekStartsOn: 1 })); setCalendarMonth(startOfMonth(date)); }} />
+            <MiniCalendar month={calendarMonth} selected={weekStart} onMonthChange={setCalendarMonth} onSelect={(date) => { goToWeek(date); setCalendarMonth(startOfMonth(date)); }} />
             <div className="grid min-w-[390px] flex-1 grid-cols-3 gap-2 self-stretch">
               {ROUTINE_LISTS.map((list) => {
                 const items = workTasks.filter((task) => task.list_type === list.key);
@@ -590,26 +656,13 @@ export function WorkJournal() {
                 );
               })}
             </div>
-            <div className="flex min-w-[250px] flex-1 flex-col items-center gap-2">
+            <div className="flex min-w-[250px] flex-1 flex-col items-center justify-center gap-2">
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setWeekStart((date) => subWeeks(date, 1))} aria-label="이전 주"><ChevronLeft className="h-4 w-4" /></Button>
+                <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => goToWeek(subWeeks(weekStart, 1))} aria-label="이전 주"><ChevronLeft className="h-4 w-4" /></Button>
                 <div className="min-w-44 text-center"><p className="text-[10px] text-muted-foreground">{format(weekStart, "yyyy년", { locale: ko })}</p><h2 className="text-sm font-semibold">{format(weekStart, "M월 d일")} – {format(addDays(weekStart, 6), "M월 d일")}</h2></div>
-                <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setWeekStart((date) => addWeeks(date, 1))} aria-label="다음 주"><ChevronRight className="h-4 w-4" /></Button>
+                <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => goToWeek(addWeeks(weekStart, 1))} aria-label="다음 주"><ChevronRight className="h-4 w-4" /></Button>
               </div>
-              {/* 네이티브 select 는 mousedown 기본 동작으로 목록을 열기 때문에, 선택 영역을 지키려고 건 preventDefault 에
-                  막혀 아예 열리지 않는다. 버튼 드롭다운으로 대체한다. */}
-              <div className="flex items-center gap-1 rounded-xl border border-border/70 bg-white/70 p-1" onMouseDown={(event) => event.preventDefault()}>
-                <Type className="mx-1 h-4 w-4 text-muted-foreground" />
-                <div className="relative">
-                  <button type="button" onClick={() => { setSizeMenuOpen((open) => !open); setTextPaletteOpen(false); }} className="flex h-7 items-center gap-1 rounded-lg px-2 text-xs hover:bg-muted" aria-label="선택 글자 크기">{fontSize}px<ChevronDown className="h-3 w-3 opacity-60" /></button>
-                  {sizeMenuOpen ? <div className="absolute left-1/2 top-9 z-40 flex -translate-x-1/2 flex-col rounded-xl border bg-popover p-1 shadow-md">{FONT_SIZES.map((size) => <button type="button" key={size} onClick={() => { setFontSize(size); applyTextFormat("fontSize", String(size)); }} className={cn("rounded-md px-3 py-1 text-xs hover:bg-muted", size === fontSize && "bg-muted font-semibold")}>{size}px</button>)}</div> : null}
-                </div>
-                <div className="relative">
-                  <button type="button" onClick={() => { setTextPaletteOpen((open) => !open); setSizeMenuOpen(false); }} className="rounded-lg p-1.5 hover:bg-muted" title="선택 글자 색상"><Palette className="h-4 w-4" /></button>
-                  {textPaletteOpen ? <div className="absolute left-1/2 top-9 z-40 flex -translate-x-1/2 gap-1 rounded-xl border bg-popover p-2 shadow-md">{TEXT_COLORS.map((color) => <button type="button" key={color} onClick={() => applyTextFormat("foreColor", color)} className="h-5 w-5 rounded-full ring-1 ring-black/10 hover:scale-110" style={{ backgroundColor: color }} aria-label={`글자색 ${color}`} />)}</div> : null}
-                </div>
-                <span className="px-1 text-[10px] text-muted-foreground">글자를 드래그해 적용</span>
-              </div>
+              <p className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><Type className="h-3.5 w-3.5" />글자를 드래그하면 서식 팝업이 뜹니다</p>
             </div>
           </div>
           {loading ? <div className="p-12 text-center text-sm text-muted-foreground">업무일지를 불러오는 중...</div> : (
@@ -693,6 +746,31 @@ export function WorkJournal() {
         </div>
         </ResizablePanel>
       </ResizablePanelGroup>
+
+      {/* mousedown 을 막아야 팝업을 눌러도 드래그해 둔 선택 영역이 풀리지 않는다. */}
+      {bubble && !schedulePrompt ? (
+        <div className="fixed z-[70] flex items-center gap-1 rounded-xl border border-border/70 bg-popover p-1.5 shadow-lg" style={{ left: bubble.x, top: bubble.y }} onMouseDown={(event) => event.preventDefault()}>
+          <div className="flex items-center gap-0.5">
+            {FONT_SIZES.map((size) => (
+              <button type="button" key={size} onClick={() => applyFormat((span) => { span.style.fontSize = `${size}px`; })} className="rounded-md px-1.5 py-1 text-[11px] hover:bg-muted" aria-label={`글자 크기 ${size}px`}>{size}</button>
+            ))}
+          </div>
+          <span className="mx-0.5 h-5 w-px bg-border" />
+          <div className="flex items-center gap-1">
+            {TEXT_COLORS.map((color) => (
+              <button type="button" key={color} onClick={() => applyFormat((span) => { span.style.color = color; })} className="h-5 w-5 rounded-full ring-1 ring-black/10 hover:scale-110" style={{ backgroundColor: color }} aria-label={`글자색 ${color}`} />
+            ))}
+          </div>
+          {bubble.schedule ? (
+            <>
+              <span className="mx-0.5 h-5 w-px bg-border" />
+              <button type="button" onClick={() => { setSchedulePrompt({ x: bubble.x, y: bubble.y, journalDate: bubble.journalDate, ...bubble.schedule! }); setBubble(null); }} className="flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium text-primary hover:bg-primary/10">
+                <CalendarCheck className="h-3.5 w-3.5" />일정 등록
+              </button>
+            </>
+          ) : null}
+        </div>
+      ) : null}
 
       {schedulePrompt ? (
         <div className="fixed z-[80] w-[288px] rounded-2xl border border-primary/30 bg-white p-3 shadow-lg" style={{ left: schedulePrompt.x, top: schedulePrompt.y }}>
