@@ -35,7 +35,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { DeadlineTaskItem } from "@/app/dashboard/work-status/[id]/deadline-task-item";
+import { RequestSentBoard, type SentRequest } from "@/app/dashboard/work-status/[id]/request-sent-board";
+import { isRoutineChecked, routinePeriodKey } from "@/lib/routine-period";
 import { createClient } from "@/lib/supabase/client";
+import type { WorkListType, WorkStatusTask, WorkStatusValue } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type JournalEntry = {
@@ -67,11 +74,17 @@ type SchedulePrompt = {
   y: number;
   date: string;
   content: string;
+  journalDate: string;
 };
 
 const NOTE_COLORS = ["#fef3c7", "#dbeafe", "#dcfce7", "#fce7f3", "#ede9fe", "#f1f5f9"];
 const TEXT_COLORS = ["#334155", "#0f766e", "#1d4ed8", "#7e22ce", "#be123c", "#111827"];
 const FONT_SIZES = [12, 14, 16, 18, 22, 26];
+const ROUTINE_LISTS: Array<{ key: WorkListType; label: string }> = [
+  { key: "daily", label: "일간" },
+  { key: "weekly", label: "주간" },
+  { key: "monthly", label: "월간" },
+];
 
 function dateKey(date: Date) {
   return format(date, "yyyy-MM-dd");
@@ -154,10 +167,14 @@ export function WorkJournal() {
   const selectionRef = useRef<Range | null>(null);
   const selectedEditorRef = useRef<HTMLDivElement | null>(null);
   const [employeeId, setEmployeeId] = useState<string | null>(null);
+  const [authUid, setAuthUid] = useState<string | null>(null);
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [notes, setNotes] = useState<BoardNote[]>([]);
+  const [workTasks, setWorkTasks] = useState<WorkStatusTask[]>([]);
+  const [sentRequests, setSentRequests] = useState<SentRequest[]>([]);
+  const [routineInput, setRoutineInput] = useState<Record<string, string>>({});
   const [showArchive, setShowArchive] = useState(false);
   const [loading, setLoading] = useState(true);
   const [textPaletteOpen, setTextPaletteOpen] = useState(false);
@@ -173,6 +190,7 @@ export function WorkJournal() {
     void (async () => {
       const { data: auth } = await supabase.auth.getUser();
       if (!auth.user) return;
+      setAuthUid(auth.user.id);
       const { data, error } = await supabase.from("employees").select("id").eq("auth_uid", auth.user.id).single();
       if (!active) return;
       if (error || !data) toast.error("직원 정보를 확인할 수 없습니다.");
@@ -196,15 +214,29 @@ export function WorkJournal() {
     else setNotes((data ?? []) as BoardNote[]);
   }, [employeeId, supabase]);
 
+  const loadWorkTasks = useCallback(async () => {
+    if (!employeeId || !authUid) return;
+    const [receivedResult, sentResult] = await Promise.all([
+      supabase.from("work_status_tasks").select("*").eq("employee_id", employeeId).is("archived_at", null).order("sort_order").order("created_at"),
+      supabase.from("work_status_tasks").select("*, employee:employees!work_status_tasks_employee_id_fkey(id, name, department)").eq("created_by", authUid).eq("list_type", "instruction").is("archived_at", null).order("created_at", { ascending: false }),
+    ]);
+    if (receivedResult.error || sentResult.error) {
+      toast.error("업무 위젯을 불러오지 못했습니다.");
+      return;
+    }
+    setWorkTasks((receivedResult.data ?? []) as WorkStatusTask[]);
+    setSentRequests((sentResult.data ?? []) as SentRequest[]);
+  }, [authUid, employeeId, supabase]);
+
   useEffect(() => {
     if (!employeeId) return;
     let active = true;
     queueMicrotask(() => {
       if (!active) return;
-      void Promise.all([loadEntries(), loadNotes()]).finally(() => { if (active) setLoading(false); });
+      void Promise.all([loadEntries(), loadNotes(), loadWorkTasks()]).finally(() => { if (active) setLoading(false); });
     });
     return () => { active = false; };
-  }, [employeeId, loadEntries, loadNotes]);
+  }, [employeeId, loadEntries, loadNotes, loadWorkTasks]);
 
   const saveDay = async (day: Date, content: string) => {
     if (!employeeId) return;
@@ -219,6 +251,50 @@ export function WorkJournal() {
       if (error) toast.error("업무일지를 저장하지 못했습니다.");
       else setEntries((current) => [...current, data as JournalEntry]);
     }
+  };
+
+  const addRoutine = async (listType: WorkListType) => {
+    if (!employeeId || !authUid) return;
+    const title = (routineInput[listType] ?? "").trim();
+    if (!title) return;
+    const { data, error } = await supabase.from("work_status_tasks").insert({
+      employee_id: employeeId,
+      list_type: listType,
+      title,
+      detail: null,
+      status: "미진행" as WorkStatusValue,
+      progress: 0,
+      due_date: null,
+      sort_order: 0,
+      created_by: authUid,
+    }).select("*").single();
+    if (error) toast.error("고정업무를 추가하지 못했습니다.");
+    else {
+      setWorkTasks((current) => [...current, data as WorkStatusTask]);
+      setRoutineInput((current) => ({ ...current, [listType]: "" }));
+    }
+  };
+
+  const toggleRoutine = async (task: WorkStatusTask) => {
+    const checked = isRoutineChecked(task);
+    const key = checked ? null : routinePeriodKey(task.list_type);
+    const patch = {
+      routine_checked_key: key,
+      status: (checked ? "미진행" : "완료") as WorkStatusValue,
+      progress: checked ? 0 : 100,
+    };
+    setWorkTasks((current) => current.map((item) => item.id === task.id ? { ...item, ...patch } : item));
+    const { error } = await supabase.from("work_status_tasks").update(patch).eq("id", task.id);
+    if (error) {
+      toast.error("체크 상태를 저장하지 못했습니다.");
+      void loadWorkTasks();
+    }
+  };
+
+  const deleteRoutine = async (task: WorkStatusTask) => {
+    const { error } = await supabase.from("work_status_tasks").delete().eq("id", task.id);
+    if (error) toast.error("고정업무를 삭제하지 못했습니다.");
+    else setWorkTasks((current) => current.filter((item) => item.id !== task.id));
   };
 
   const rememberSelection = (day: Date, editor: HTMLDivElement) => {
@@ -236,6 +312,7 @@ export function WorkJournal() {
       y: Math.min(window.innerHeight - 220, rect.bottom + 8),
       date: parsed.date,
       content: parsed.content,
+      journalDate: dateKey(day),
     });
   };
 
@@ -278,6 +355,17 @@ export function WorkJournal() {
     });
     if (error) toast.error("일정 등록에 실패했습니다.");
     else {
+      const range = selectionRef.current;
+      const editor = selectedEditorRef.current;
+      if (range && editor) {
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+        document.execCommand("styleWithCSS", false, "true");
+        document.execCommand("hiliteColor", false, "#fef08a");
+        const journalDay = new Date(`${schedulePrompt.journalDate}T00:00:00`);
+        await saveDay(journalDay, editor.innerHTML);
+      }
       toast.success("워크스페이스 일정에 등록했습니다.");
       setSchedulePrompt(null);
       window.getSelection()?.removeAllRanges();
@@ -349,7 +437,7 @@ export function WorkJournal() {
     return (
       <section key={`${dateKey(day)}-${entry?.id ?? "empty"}`} className={cn(
         "flex min-h-0 flex-col bg-[radial-gradient(circle_at_1px_1px,rgba(100,116,139,0.12)_1px,transparent_0)] [background-size:18px_18px]",
-        weekend ? "min-h-[250px]" : "min-h-[570px]"
+        weekend ? "min-h-[175px]" : "min-h-[380px]"
       )}>
         <div className="border-b border-primary/45 px-3 py-2">
           <strong className={cn("text-2xl font-semibold text-primary", day.getDay() === 0 && "text-rose-500", day.getDay() === 6 && "text-blue-500")}>{format(day, "dd")}</strong>
@@ -368,6 +456,17 @@ export function WorkJournal() {
             if (event.key === "Enter" && event.shiftKey) {
               event.preventDefault();
               document.execCommand("insertLineBreak");
+              return;
+            }
+            if (event.key === "Enter") {
+              const selection = window.getSelection();
+              const anchor = selection?.anchorNode;
+              const element = anchor instanceof Element ? anchor : anchor?.parentElement;
+              if (!element?.closest("li")) {
+                event.preventDefault();
+                document.execCommand("insertUnorderedList");
+                document.execCommand("insertParagraph");
+              }
             }
           }}
           onBlur={(event) => void saveDay(day, event.currentTarget.innerHTML)}
@@ -393,10 +492,35 @@ export function WorkJournal() {
         <Button variant="outline" size="sm" onClick={() => { const today = new Date(); setWeekStart(startOfWeek(today, { weekStartsOn: 1 })); setCalendarMonth(startOfMonth(today)); }}><RotateCcw className="mr-1.5 h-4 w-4" />이번 주</Button>
       </header>
 
-      <div className="grid min-h-[760px] flex-1 gap-3 xl:grid-cols-[minmax(0,1.45fr)_minmax(420px,1fr)]">
-        <div className="surface-panel flex min-w-0 flex-col overflow-hidden rounded-[1.5rem] border border-border/60 bg-card/80 shadow-sm backdrop-blur">
+      <ResizablePanelGroup orientation="horizontal" className="min-h-[880px] flex-1">
+        <ResizablePanel defaultSize={62} minSize={42}>
+          <div className="flex h-full min-w-0 flex-col gap-3 pr-1.5">
+        <div className="surface-panel flex h-[560px] min-w-0 shrink-0 flex-col overflow-hidden rounded-[1.5rem] border border-border/60 bg-card/80 shadow-sm backdrop-blur">
           <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border/60 p-3">
             <MiniCalendar month={calendarMonth} selected={weekStart} onMonthChange={setCalendarMonth} onSelect={(date) => { setWeekStart(startOfWeek(date, { weekStartsOn: 1 })); setCalendarMonth(startOfMonth(date)); }} />
+            <div className="grid min-w-[390px] flex-1 grid-cols-3 gap-2 self-stretch">
+              {ROUTINE_LISTS.map((list) => {
+                const items = workTasks.filter((task) => task.list_type === list.key);
+                return (
+                  <div key={list.key} className="rounded-xl border border-border/60 bg-white/55 p-2">
+                    <p className="mb-1.5 text-[10px] font-semibold text-primary">{list.label} 업무</p>
+                    <div className="max-h-20 space-y-1 overflow-y-auto">
+                      {items.map((task) => (
+                        <div key={task.id} className="group flex items-center gap-1.5">
+                          <Checkbox checked={isRoutineChecked(task)} onCheckedChange={() => void toggleRoutine(task)} className="h-3.5 w-3.5" />
+                          <span className={cn("min-w-0 flex-1 truncate text-[11px]", isRoutineChecked(task) && "text-muted-foreground line-through")}>{task.title}</span>
+                          <button type="button" onClick={() => void deleteRoutine(task)} className="opacity-0 group-hover:opacity-60" aria-label="고정업무 삭제"><X className="h-3 w-3" /></button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-1.5 flex gap-1">
+                      <Input value={routineInput[list.key] ?? ""} onChange={(event) => setRoutineInput((current) => ({ ...current, [list.key]: event.target.value }))} onKeyDown={(event) => { if (event.key === "Enter") void addRoutine(list.key); }} placeholder="업무 추가" className="h-6 min-w-0 px-1.5 text-[10px]" />
+                      <button type="button" onClick={() => void addRoutine(list.key)} className="rounded-md bg-primary px-1.5 text-primary-foreground" aria-label={`${list.label} 업무 추가`}><Plus className="h-3 w-3" /></button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
             <div className="flex min-w-[250px] flex-1 flex-col items-center gap-2">
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setWeekStart((date) => subWeeks(date, 1))} aria-label="이전 주"><ChevronLeft className="h-4 w-4" /></Button>
@@ -426,7 +550,33 @@ export function WorkJournal() {
           )}
         </div>
 
-        <div className="surface-panel flex min-h-[760px] min-w-0 flex-col overflow-hidden rounded-[1.5rem] border border-border/60 bg-card/80 shadow-sm backdrop-blur">
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto lg:grid-cols-2">
+          <div className="rounded-[1.25rem] border border-border/60 bg-card/80 p-3">
+            <div className="mb-2 flex items-center gap-2">
+              <CalendarCheck className="h-4 w-4 text-primary" />
+              <h3 className="text-sm font-semibold">마감기한 업무 · 요청받은 업무</h3>
+              <span className="text-xs text-muted-foreground">({workTasks.filter((task) => task.list_type === "deadline" || task.list_type === "instruction").length})</span>
+            </div>
+            <div className="max-h-[300px] space-y-2 overflow-y-auto pr-1">
+              {workTasks.filter((task) => task.list_type === "deadline" || task.list_type === "instruction").length === 0 ? (
+                <p className="py-4 text-center text-xs text-muted-foreground">표시할 마감·요청 업무가 없습니다.</p>
+              ) : workTasks.filter((task) => task.list_type === "deadline" || task.list_type === "instruction").map((task) => (
+                <DeadlineTaskItem key={task.id} task={task} canEdit onDeleted={(id) => setWorkTasks((current) => current.filter((item) => item.id !== id))} onArchived={(id) => setWorkTasks((current) => current.filter((item) => item.id !== id))} />
+              ))}
+            </div>
+          </div>
+          <div className="min-h-0 overflow-y-auto [&>div]:h-full">
+            <RequestSentBoard requests={sentRequests} />
+          </div>
+        </div>
+          </div>
+        </ResizablePanel>
+
+        <ResizableHandle withHandle className="mx-1.5" />
+
+        <ResizablePanel defaultSize={38} minSize={25}>
+
+        <div className="surface-panel flex h-full min-h-[760px] min-w-0 flex-col overflow-hidden rounded-[1.5rem] border border-border/60 bg-card/80 shadow-sm backdrop-blur">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 px-4 py-3">
             <div><h2 className="font-semibold">자유 메모보드</h2><p className="text-xs text-muted-foreground">메모지를 자유롭게 붙이고 정리하세요.</p></div>
             <div className="flex items-center gap-2">
@@ -463,7 +613,8 @@ export function WorkJournal() {
             ))}
           </div>
         </div>
-      </div>
+        </ResizablePanel>
+      </ResizablePanelGroup>
 
       {schedulePrompt ? (
         <div className="fixed z-[80] w-[288px] rounded-2xl border border-primary/30 bg-white p-3 shadow-lg" style={{ left: schedulePrompt.x, top: schedulePrompt.y }}>

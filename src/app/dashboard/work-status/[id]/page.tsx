@@ -25,6 +25,7 @@ import type {
   WorkStatusTask,
   WorkStatusValue,
 } from "@/lib/types";
+import { isRoutineChecked, routinePeriodKey } from "@/lib/routine-period";
 import {
   canAssignRequestByPosition,
   DEFAULT_REQUEST_MIN_POSITION,
@@ -251,15 +252,17 @@ export default function WorkStatusDetailPage() {
   };
 
   const toggleFixed = async (task: WorkStatusTask) => {
-    const next: WorkStatusValue = task.status === "완료" ? "미진행" : "완료";
-    setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: next } : t)));
+    const checked = isRoutineChecked(task);
+    const next: WorkStatusValue = checked ? "미진행" : "완료";
+    const routineCheckedKey = checked ? null : routinePeriodKey(task.list_type);
+    setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: next, routine_checked_key: routineCheckedKey } : t)));
     const { error: updErr } = await supabase
       .from("work_status_tasks")
-      .update({ status: next, progress: next === "완료" ? 100 : task.progress })
+      .update({ status: next, progress: next === "완료" ? 100 : 0, routine_checked_key: routineCheckedKey })
       .eq("id", task.id);
     if (updErr) {
       toast.error("상태 변경에 실패했습니다.");
-      setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: task.status } : t)));
+      setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: task.status, routine_checked_key: task.routine_checked_key } : t)));
     }
   };
 
@@ -408,13 +411,13 @@ export default function WorkStatusDetailPage() {
               items.map((task) => (
                 <div key={task.id} className="group flex items-center gap-2">
                   <Checkbox
-                    checked={task.status === "완료"}
+                    checked={isRoutineChecked(task)}
                     onCheckedChange={() => void toggleFixed(task)}
                     disabled={!canEdit}
                   />
                   <span
                     className={`flex-1 text-sm ${
-                      task.status === "완료"
+                      isRoutineChecked(task)
                         ? "text-muted-foreground line-through"
                         : "text-foreground"
                     }`}
