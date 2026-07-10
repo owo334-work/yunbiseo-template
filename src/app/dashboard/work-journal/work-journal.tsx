@@ -147,6 +147,39 @@ function restoreEmptyParagraph(editor: HTMLDivElement) {
   selection?.addRange(range);
 }
 
+function insertPlainParagraphAfterHighlight(editor: HTMLDivElement) {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0 || !selection.isCollapsed) return false;
+  const anchor = selection.anchorNode;
+  if (!anchor) return false;
+
+  let highlight: HTMLElement | null = null;
+  const anchorElement = anchor instanceof Element ? anchor : anchor.parentElement;
+  highlight = anchorElement?.closest<HTMLElement>('span[style*="background-color"]') ?? null;
+
+  // 커서가 형광펜 span 바로 뒤에 있으면 anchor 는 부모 문단이므로 이전 노드도 확인한다.
+  if (!highlight && anchor instanceof Element && selection.anchorOffset > 0) {
+    const previous = anchor.childNodes[selection.anchorOffset - 1];
+    const previousElement = previous instanceof HTMLElement ? previous : previous?.parentElement;
+    highlight = previousElement?.closest<HTMLElement>('span[style*="background-color"]') ?? null;
+  }
+  if (!highlight || !editor.contains(highlight)) return false;
+
+  let paragraph: HTMLElement = highlight;
+  while (paragraph.parentElement && paragraph.parentElement !== editor) paragraph = paragraph.parentElement;
+
+  const nextParagraph = document.createElement("div");
+  nextParagraph.innerHTML = "<br>";
+  paragraph.insertAdjacentElement("afterend", nextParagraph);
+
+  const range = document.createRange();
+  range.selectNodeContents(nextParagraph);
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  return true;
+}
+
 // document.execCommand 는 편집 대상이 포커스를 쥐고 있어야 하고 styleWithCSS 동작도 브라우저마다 달라
 // 서식이 조용히 무시되곤 한다. 선택 영역의 텍스트 노드를 직접 <span> 으로 감싸 확실하게 서식을 입힌다.
 // 새로 만들어진 선택 영역을 돌려주므로 호출한 쪽에서 드래그 상태를 이어갈 수 있다.
@@ -549,11 +582,13 @@ export function WorkJournal() {
     if (error) toast.error("일정 등록에 실패했습니다.");
     else {
       const editor = selectedEditorRef.current;
+      let lastHighlight: HTMLElement | null = null;
       if (editor) {
         editor.querySelectorAll<HTMLElement>(`[data-schedule-marker="${schedulePrompt.markerId}"]`).forEach((marker) => {
           marker.style.backgroundColor = "#fef08a";
           marker.style.borderRadius = "0.2em";
           marker.removeAttribute("data-schedule-marker");
+          lastHighlight = marker;
         });
         entryContentsRef.current.set(schedulePrompt.journalDate, editor.innerHTML);
         const highlightSaved = await saveDay(schedulePrompt.journalDate, editor.innerHTML);
@@ -566,7 +601,16 @@ export function WorkJournal() {
       }
       toast.success("워크스페이스 일정에 등록했습니다.");
       setSchedulePrompt(null);
-      window.getSelection()?.removeAllRanges();
+      if (lastHighlight) {
+        const range = document.createRange();
+        range.setStartAfter(lastHighlight);
+        range.collapse(true);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      } else {
+        window.getSelection()?.removeAllRanges();
+      }
     }
     setScheduleSaving(false);
   };
@@ -676,6 +720,12 @@ export function WorkJournal() {
               return;
             }
             if (event.key === "Enter") {
+              if (insertPlainParagraphAfterHighlight(event.currentTarget)) {
+                event.preventDefault();
+                entryContentsRef.current.set(dateKey(day), event.currentTarget.innerHTML);
+                void saveDay(dateKey(day), event.currentTarget.innerHTML);
+                return;
+              }
               const selection = window.getSelection();
               const anchor = selection?.anchorNode;
               const element = anchor instanceof Element ? anchor : anchor?.parentElement;
