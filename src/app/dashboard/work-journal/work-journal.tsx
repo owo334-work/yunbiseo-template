@@ -382,17 +382,37 @@ export function WorkJournal() {
   }, [authUid, employeeId, loadWorkTasks]);
 
   const saveDay = async (key: string, content: string) => {
-    if (!employeeId) return;
+    if (!employeeId) return false;
     entryContentsRef.current.set(key, content);
     const existingId = entryIdsRef.current.get(key);
     if (existingId) {
       const { error } = await supabase.from("work_journal_entries").update({ content, updated_at: new Date().toISOString() }).eq("id", existingId);
-      if (error) toast.error("업무일지를 저장하지 못했습니다.");
+      if (error) {
+        toast.error("업무일지를 저장하지 못했습니다.");
+        return false;
+      }
     } else {
       const { data, error } = await supabase.from("work_journal_entries").insert({ employee_id: employeeId, journal_date: key, content }).select("*").single();
-      if (error) toast.error("업무일지를 저장하지 못했습니다.");
-      else if (data) entryIdsRef.current.set(key, (data as JournalEntry).id);
+      if (error?.code === "23505") {
+        const { data: existing, error: findError } = await supabase.from("work_journal_entries").select("id").eq("employee_id", employeeId).eq("journal_date", key).single();
+        if (!existing || findError) {
+          toast.error("업무일지를 저장하지 못했습니다.");
+          return false;
+        }
+        entryIdsRef.current.set(key, existing.id);
+        const { error: updateError } = await supabase.from("work_journal_entries").update({ content, updated_at: new Date().toISOString() }).eq("id", existing.id);
+        if (updateError) {
+          toast.error("업무일지를 저장하지 못했습니다.");
+          return false;
+        }
+      } else if (error) {
+        toast.error("업무일지를 저장하지 못했습니다.");
+        return false;
+      } else if (data) {
+        entryIdsRef.current.set(key, (data as JournalEntry).id);
+      }
     }
+    return true;
   };
 
   const addRoutine = async (listType: WorkListType) => {
@@ -536,7 +556,13 @@ export function WorkJournal() {
           marker.removeAttribute("data-schedule-marker");
         });
         entryContentsRef.current.set(schedulePrompt.journalDate, editor.innerHTML);
-        await saveDay(schedulePrompt.journalDate, editor.innerHTML);
+        const highlightSaved = await saveDay(schedulePrompt.journalDate, editor.innerHTML);
+        if (!highlightSaved) {
+          toast.warning("일정은 등록됐지만 형광펜 표시 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+          setSchedulePrompt(null);
+          setScheduleSaving(false);
+          return;
+        }
       }
       toast.success("워크스페이스 일정에 등록했습니다.");
       setSchedulePrompt(null);
