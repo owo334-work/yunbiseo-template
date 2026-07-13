@@ -111,6 +111,16 @@ const NOTE_MIN_HEIGHT = 120;
 const NOTE_MAX_SIZE = 2400;
 const NOTE_IMAGE_BUCKET = "work-journal-images";
 const MAX_NOTE_IMAGE_BYTES = 10 * 1024 * 1024;
+// useDefaultLayout의 기본 저장소는 서버 렌더링 중에도 localStorage를 참조한다.
+// 서버에서는 빈 값으로 응답하고, 브라우저에서만 실제 크기를 저장·복원한다.
+const PANEL_LAYOUT_STORAGE = {
+  getItem(key: string) {
+    return typeof window === "undefined" ? null : window.localStorage.getItem(key);
+  },
+  setItem(key: string, value: string) {
+    if (typeof window !== "undefined") window.localStorage.setItem(key, value);
+  },
+};
 const ROUTINE_LISTS: Array<{ key: WorkListType; label: string }> = [
   { key: "daily", label: "일간" },
   { key: "weekly", label: "주간" },
@@ -336,10 +346,12 @@ export function WorkJournal() {
   const mainPanelLayout = useDefaultLayout({
     id: "work-journal-main-panels",
     panelIds: ["weekly-work-area", "free-memo-board"],
+    storage: PANEL_LAYOUT_STORAGE,
   });
   const weeklyPanelLayout = useDefaultLayout({
     id: "work-journal-weekly-panels",
     panelIds: ["weekly-journal", "work-status-widgets"],
+    storage: PANEL_LAYOUT_STORAGE,
   });
 
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)), [weekStart]);
