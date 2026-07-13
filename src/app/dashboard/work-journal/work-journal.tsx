@@ -344,12 +344,12 @@ export function WorkJournal() {
   const [schedulePrompt, setSchedulePrompt] = useState<SchedulePrompt | null>(null);
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const mainPanelLayout = useDefaultLayout({
-    id: "work-journal-main-panels",
+    id: "work-journal-main-panels-v2",
     panelIds: ["weekly-work-area", "free-memo-board"],
     storage: PANEL_LAYOUT_STORAGE,
   });
   const weeklyPanelLayout = useDefaultLayout({
-    id: "work-journal-weekly-panels",
+    id: "work-journal-weekly-panels-v2",
     panelIds: ["weekly-journal", "work-status-widgets"],
     storage: PANEL_LAYOUT_STORAGE,
   });
@@ -937,10 +937,10 @@ export function WorkJournal() {
       </header>
 
       <ResizablePanelGroup orientation="horizontal" className="min-h-[880px] flex-1" {...mainPanelLayout}>
-        <ResizablePanel id="weekly-work-area" defaultSize={62} minSize={42}>
+        <ResizablePanel id="weekly-work-area" defaultSize="62%" minSize="42%">
           <div className="h-full min-w-0 pr-1.5">
           <ResizablePanelGroup orientation="vertical" className="h-full" {...weeklyPanelLayout}>
-          <ResizablePanel id="weekly-journal" defaultSize={58} minSize={34}>
+          <ResizablePanel id="weekly-journal" defaultSize="58%" minSize="34%">
         <div className="surface-panel flex h-full min-w-0 flex-col overflow-hidden rounded-[1.5rem] border border-border/60 bg-card/80 shadow-sm backdrop-blur">
           <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border/60 p-3">
             <MiniCalendar month={calendarMonth} selected={weekStart} onMonthChange={setCalendarMonth} onSelect={(date) => { goToWeek(date); setCalendarMonth(startOfMonth(date)); }} />
@@ -988,7 +988,7 @@ export function WorkJournal() {
 
           </ResizablePanel>
           <ResizableHandle withHandle className="my-1.5" />
-          <ResizablePanel id="work-status-widgets" defaultSize={42} minSize={22}>
+          <ResizablePanel id="work-status-widgets" defaultSize="42%" minSize="22%">
 
         <div className="grid h-full min-h-0 grid-cols-1 gap-3 overflow-hidden lg:grid-cols-2">
           <div className="flex min-h-0 flex-col rounded-[1.25rem] border border-border/60 bg-card/80 p-3">
@@ -1016,7 +1016,7 @@ export function WorkJournal() {
 
         <ResizableHandle withHandle className="mx-1.5" />
 
-        <ResizablePanel id="free-memo-board" defaultSize={38} minSize={25}>
+        <ResizablePanel id="free-memo-board" defaultSize="38%" minSize="25%">
 
         <div className="surface-panel flex h-full min-h-[760px] min-w-0 flex-col overflow-hidden rounded-[1.5rem] border border-border/60 bg-card/80 shadow-sm backdrop-blur">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 px-4 py-3">
