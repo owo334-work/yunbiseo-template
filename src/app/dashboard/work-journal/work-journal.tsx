@@ -34,6 +34,7 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useDefaultLayout } from "react-resizable-panels";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -332,6 +333,14 @@ export function WorkJournal() {
   const [uploadingBoardImage, setUploadingBoardImage] = useState(false);
   const [schedulePrompt, setSchedulePrompt] = useState<SchedulePrompt | null>(null);
   const [scheduleSaving, setScheduleSaving] = useState(false);
+  const mainPanelLayout = useDefaultLayout({
+    id: "work-journal-main-panels",
+    panelIds: ["weekly-work-area", "free-memo-board"],
+  });
+  const weeklyPanelLayout = useDefaultLayout({
+    id: "work-journal-weekly-panels",
+    panelIds: ["weekly-journal", "work-status-widgets"],
+  });
 
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)), [weekStart]);
   const visibleNotes = useMemo(() => notes.filter((note) => note.is_archived === showArchive), [notes, showArchive]);
@@ -915,11 +924,11 @@ export function WorkJournal() {
         <Button variant="outline" size="sm" onClick={() => { const today = new Date(); goToWeek(today); setCalendarMonth(startOfMonth(today)); }}><RotateCcw className="mr-1.5 h-4 w-4" />이번 주</Button>
       </header>
 
-      <ResizablePanelGroup orientation="horizontal" className="min-h-[880px] flex-1">
-        <ResizablePanel defaultSize={62} minSize={42}>
+      <ResizablePanelGroup orientation="horizontal" className="min-h-[880px] flex-1" {...mainPanelLayout}>
+        <ResizablePanel id="weekly-work-area" defaultSize={62} minSize={42}>
           <div className="h-full min-w-0 pr-1.5">
-          <ResizablePanelGroup orientation="vertical" className="h-full">
-          <ResizablePanel defaultSize={58} minSize={34}>
+          <ResizablePanelGroup orientation="vertical" className="h-full" {...weeklyPanelLayout}>
+          <ResizablePanel id="weekly-journal" defaultSize={58} minSize={34}>
         <div className="surface-panel flex h-full min-w-0 flex-col overflow-hidden rounded-[1.5rem] border border-border/60 bg-card/80 shadow-sm backdrop-blur">
           <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border/60 p-3">
             <MiniCalendar month={calendarMonth} selected={weekStart} onMonthChange={setCalendarMonth} onSelect={(date) => { goToWeek(date); setCalendarMonth(startOfMonth(date)); }} />
@@ -967,7 +976,7 @@ export function WorkJournal() {
 
           </ResizablePanel>
           <ResizableHandle withHandle className="my-1.5" />
-          <ResizablePanel defaultSize={42} minSize={22}>
+          <ResizablePanel id="work-status-widgets" defaultSize={42} minSize={22}>
 
         <div className="grid h-full min-h-0 grid-cols-1 gap-3 overflow-hidden lg:grid-cols-2">
           <div className="flex min-h-0 flex-col rounded-[1.25rem] border border-border/60 bg-card/80 p-3">
@@ -995,7 +1004,7 @@ export function WorkJournal() {
 
         <ResizableHandle withHandle className="mx-1.5" />
 
-        <ResizablePanel defaultSize={38} minSize={25}>
+        <ResizablePanel id="free-memo-board" defaultSize={38} minSize={25}>
 
         <div className="surface-panel flex h-full min-h-[760px] min-w-0 flex-col overflow-hidden rounded-[1.5rem] border border-border/60 bg-card/80 shadow-sm backdrop-blur">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 px-4 py-3">
