@@ -86,7 +86,7 @@ export function DeadlineTaskItem({
 
   return (
     <Card className="border-border/70 bg-card/85">
-      <CardContent className="space-y-2.5 p-3">
+      <CardContent className="space-y-1.5 p-2.5">
         <div className="flex items-start justify-between gap-2">
           <button
             type="button"
@@ -131,72 +131,59 @@ export function DeadlineTaskItem({
           ) : null}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          {task.due_date ? (
-            <span className={isOverdue ? "font-medium text-rose-600" : "text-muted-foreground"}>
-              마감 {task.due_date}
-              {isOverdue ? " (기한 초과)" : ""}
-            </span>
-          ) : (
-            <span className="text-muted-foreground">마감기한 없음</span>
-          )}
-          {status === "완료" && task.completed_at ? (
-            <span className="text-emerald-600">
-              완료 {task.completed_at.slice(0, 10)}
-            </span>
-          ) : null}
+        {collapsed ? null : (
+          <>
+        {/* 마감일 · 진척도 · 상태를 한 줄에 배치해 카드 높이를 줄인다. */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+          <div className="flex min-w-0 items-center gap-2">
+            {task.due_date ? (
+              <span className={isOverdue ? "font-medium text-rose-600" : "text-muted-foreground"}>
+                마감 {task.due_date}{isOverdue ? " (기한 초과)" : ""}
+              </span>
+            ) : (
+              <span className="text-muted-foreground">마감기한 없음</span>
+            )}
+            {status === "완료" && task.completed_at ? (
+              <span className="text-emerald-600">완료 {task.completed_at.slice(0, 10)}</span>
+            ) : null}
+          </div>
+          <div className="ml-auto flex min-w-[150px] max-w-[230px] flex-1 items-center gap-2">
+            {canEdit ? (
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={5}
+                value={progress}
+                onChange={(e) => setProgress(Number(e.target.value))}
+                onPointerUp={() => void saveProgress(progress)}
+                onKeyUp={() => void saveProgress(progress)}
+                className="h-2 min-w-0 flex-1 accent-sky-600"
+                aria-label="진척도"
+              />
+            ) : (
+              <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
+                <div className={`h-full rounded-full transition-all ${progressTone(progress)}`} style={{ width: `${progress}%` }} />
+              </div>
+            )}
+            <span className="w-8 shrink-0 text-right text-[11px] font-semibold text-foreground">{progress}%</span>
+          </div>
           {canEdit ? (
             <Select value={status} onValueChange={(v) => void (async () => {
               const next = v as WorkStatusValue;
               setStatus(next);
               await persist({ status: next });
             })()}>
-              <SelectTrigger size="sm" className={`ml-auto h-6 border text-xs font-medium ${WORK_STATUS_STYLES[status]}`}>
+              <SelectTrigger size="sm" className={`h-7 w-[90px] shrink-0 border text-xs font-medium ${WORK_STATUS_STYLES[status]}`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {WORK_STATUSES.map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {s}
-                  </SelectItem>
-                ))}
+                {WORK_STATUSES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
               </SelectContent>
             </Select>
           ) : (
-            <span className={`ml-auto inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${WORK_STATUS_STYLES[status]}`}>
-              {status}
-            </span>
+            <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${WORK_STATUS_STYLES[status]}`}>{status}</span>
           )}
-        </div>
-
-        {collapsed ? null : (
-          <>
-        {/* 진척도: 조절 슬라이더(또는 게이지 바) + % 를 한 줄에 */}
-        <div className="flex items-center gap-2">
-          {canEdit ? (
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={5}
-              value={progress}
-              onChange={(e) => setProgress(Number(e.target.value))}
-              onPointerUp={() => void saveProgress(progress)}
-              onKeyUp={() => void saveProgress(progress)}
-              className="h-2 flex-1 accent-sky-600"
-              aria-label="진척도"
-            />
-          ) : (
-            <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
-              <div
-                className={`h-full rounded-full transition-all ${progressTone(progress)}`}
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-          )}
-          <span className="w-9 shrink-0 text-right text-[11px] font-semibold text-foreground">
-            {progress}%
-          </span>
         </div>
 
         {/* 메모 */}
@@ -208,8 +195,8 @@ export function DeadlineTaskItem({
               if (memo !== (task.detail ?? "")) void persist({ detail: memo || null });
             }}
             placeholder="메모 (업무 관련 메모를 적어두세요)"
-            rows={2}
-            className="w-full resize-y rounded-lg border border-border/70 bg-background/80 px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+            rows={1}
+            className="min-h-8 w-full resize-y rounded-lg border border-border/70 bg-background/80 px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
           />
         ) : memo ? (
           <p className="whitespace-pre-wrap rounded-lg bg-muted/50 px-2.5 py-1.5 text-xs text-muted-foreground">

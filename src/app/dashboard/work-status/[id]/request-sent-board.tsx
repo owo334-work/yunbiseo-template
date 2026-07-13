@@ -22,7 +22,7 @@ function progressTone(value: number) {
 export function RequestSentBoard({ requests }: { requests: SentRequest[] }) {
   return (
     <Card className="rounded-[1rem] border-border/70 bg-card/85">
-      <CardHeader className="pb-2">
+      <CardHeader className="px-3 pb-1.5 pt-3">
         <CardTitle className="flex items-center gap-2 text-sm">
           <Send className="h-4 w-4 text-primary" />
           내가 요청한 업무{" "}
@@ -34,7 +34,7 @@ export function RequestSentBoard({ requests }: { requests: SentRequest[] }) {
           내가 보낸 요청의 진행상황·메모만 공유받아 확인합니다. (수정은 요청 받은 직원이 합니다)
         </p>
       </CardHeader>
-      <CardContent className="space-y-2">
+      <CardContent className="space-y-1.5 px-3 pb-3">
         {requests.length === 0 ? (
           <p className="py-2 text-xs text-muted-foreground">
             내가 다른 직원에게 보낸 요청업무가 여기에 표시됩니다.
@@ -50,7 +50,7 @@ export function RequestSentBoard({ requests }: { requests: SentRequest[] }) {
             return (
               <div
                 key={task.id}
-                className="space-y-2 rounded-lg border border-border/60 bg-background/50 p-3"
+                className="space-y-1.5 rounded-lg border border-border/60 bg-background/50 p-2.5"
               >
                 <div className="flex items-start justify-between gap-2">
                   <p
@@ -67,7 +67,7 @@ export function RequestSentBoard({ requests }: { requests: SentRequest[] }) {
                   </span>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                   <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-foreground">
                     {task.employee?.name ?? "직원"}
                     {task.employee?.department ? (
@@ -84,11 +84,9 @@ export function RequestSentBoard({ requests }: { requests: SentRequest[] }) {
                   ) : (
                     <span>마감기한 없음</span>
                   )}
-                </div>
-
-                {/* 진척도 (열람 전용) */}
-                <div className="flex items-center gap-2">
-                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                  {/* 마감일과 같은 줄에 짧은 진척도 바를 표시한다. */}
+                  <div className="ml-auto flex min-w-[140px] max-w-[220px] flex-1 items-center gap-2">
+                  <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
                     <div
                       className={`h-full rounded-full ${progressTone(progress)}`}
                       style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
@@ -97,6 +95,7 @@ export function RequestSentBoard({ requests }: { requests: SentRequest[] }) {
                   <span className="w-9 shrink-0 text-right text-[11px] font-medium text-muted-foreground">
                     {progress}%
                   </span>
+                  </div>
                 </div>
 
                 {task.detail ? (
