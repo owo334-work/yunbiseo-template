@@ -24,6 +24,8 @@ import {
   ChevronRight,
   GripHorizontal,
   Maximize2,
+  MoveDown,
+  MoveUp,
   Palette,
   Plus,
   RotateCcw,
@@ -68,6 +70,7 @@ type BoardNote = {
   height: number;
   is_archived: boolean;
   image_paths: string[];
+  z_index: number;
 };
 
 type BoardImage = {
@@ -79,6 +82,7 @@ type BoardImage = {
   width: number;
   height: number;
   public_url?: string;
+  z_index: number;
 };
 
 type SchedulePrompt = {
@@ -647,9 +651,11 @@ export function WorkJournal() {
   const addBoardNote = async () => {
     if (!employeeId) return;
     const offset = (notes.length % 6) * 24;
+    const nextLayer = Math.max(0, ...notes.map((note) => note.z_index ?? 0), ...boardImages.map((image) => image.z_index ?? 0)) + 1;
     const { data, error } = await supabase.from("work_journal_notes").insert({
       employee_id: employeeId, position_x: 20 + offset, position_y: 20 + offset,
       background_color: NOTE_COLORS[notes.length % NOTE_COLORS.length],
+      z_index: nextLayer,
     }).select("*").single();
     if (error) toast.error("메모지를 만들지 못했습니다.");
     else { setNotes((current) => [...current, data as BoardNote]); setShowArchive(false); }
@@ -701,6 +707,20 @@ export function WorkJournal() {
     if (error) {
       toast.error("이미지 위치를 저장하지 못했습니다.");
       void loadBoardImages();
+    }
+  };
+
+  const changeBoardLayer = async (kind: "note" | "image", id: string, direction: "front" | "back") => {
+    const layers = [...notes.map((note) => note.z_index ?? 0), ...boardImages.map((image) => image.z_index ?? 0)];
+    const nextLayer = direction === "front" ? Math.max(0, ...layers) + 1 : Math.min(1, ...layers) - 1;
+    if (kind === "note") {
+      setNotes((current) => current.map((note) => note.id === id ? { ...note, z_index: nextLayer } : note));
+      const { error } = await supabase.from("work_journal_notes").update({ z_index: nextLayer, updated_at: new Date().toISOString() }).eq("id", id);
+      if (error) { toast.error("메모지 앞뒤 순서를 저장하지 못했습니다."); void loadNotes(); }
+    } else {
+      setBoardImages((current) => current.map((image) => image.id === id ? { ...image, z_index: nextLayer } : image));
+      const { error } = await supabase.from("work_journal_board_images").update({ z_index: nextLayer, updated_at: new Date().toISOString() }).eq("id", id);
+      if (error) { toast.error("이미지 앞뒤 순서를 저장하지 못했습니다."); void loadBoardImages(); }
     }
   };
 
@@ -977,10 +997,14 @@ export function WorkJournal() {
           <div ref={boardRef} tabIndex={0} onPaste={(event) => void handleBoardPaste(event)} className="relative flex-1 overflow-hidden bg-[radial-gradient(circle_at_1px_1px,rgba(100,116,139,0.16)_1px,transparent_0)] [background-size:22px_22px] outline-none focus:ring-2 focus:ring-inset focus:ring-primary/20">
             {visibleNotes.length === 0 && boardImages.length === 0 ? <button type="button" onClick={() => void addBoardNote()} className="absolute inset-0 m-auto flex h-32 w-64 flex-col items-center justify-center rounded-2xl border border-dashed border-border text-sm text-muted-foreground hover:border-primary/50 hover:bg-primary/5"><Plus className="mb-2 h-6 w-6" />{showArchive ? "보관한 메모가 없습니다" : "메모지를 만들거나 이미지를 붙여보세요"}</button> : null}
             {!showArchive ? boardImages.map((image) => (
-              <article key={image.id} className="absolute flex flex-col overflow-hidden rounded-md bg-white shadow-[0_3px_9px_rgba(15,23,42,0.16)] ring-1 ring-black/10" style={{ left: image.position_x, top: image.position_y, width: image.width, height: image.height }}>
+              <article key={image.id} className="absolute flex flex-col overflow-hidden rounded-md bg-white shadow-[0_3px_9px_rgba(15,23,42,0.16)] ring-1 ring-black/10" style={{ left: image.position_x, top: image.position_y, width: image.width, height: image.height, zIndex: image.z_index }}>
                 <div className="flex cursor-grab items-center justify-between border-b bg-white/90 px-2 py-1 active:cursor-grabbing" onPointerDown={(event) => startBoardImagePointer(event, image, "move")}>
                   <GripHorizontal className="h-4 w-4 text-muted-foreground" />
-                  <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={() => void removeBoardImage(image.id)} className="rounded p-1 text-muted-foreground hover:bg-rose-50 hover:text-rose-600" aria-label="이미지 카드 삭제"><Trash2 className="h-3.5 w-3.5" /></button>
+                  <div className="flex items-center" onPointerDown={(event) => event.stopPropagation()}>
+                    <button type="button" onClick={() => void changeBoardLayer("image", image.id, "back")} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-primary" title="맨 뒤로"><MoveDown className="h-3.5 w-3.5" /></button>
+                    <button type="button" onClick={() => void changeBoardLayer("image", image.id, "front")} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-primary" title="맨 앞으로"><MoveUp className="h-3.5 w-3.5" /></button>
+                    <button type="button" onClick={() => void removeBoardImage(image.id)} className="rounded p-1 text-muted-foreground hover:bg-rose-50 hover:text-rose-600" aria-label="이미지 카드 삭제"><Trash2 className="h-3.5 w-3.5" /></button>
+                  </div>
                 </div>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={image.public_url} alt="클립보드 이미지" className="min-h-0 flex-1 object-contain" draggable={false} />
@@ -988,10 +1012,12 @@ export function WorkJournal() {
               </article>
             )) : null}
             {visibleNotes.map((note) => (
-              <article key={note.id} className="absolute flex flex-col overflow-visible rounded-md shadow-[0_3px_9px_rgba(15,23,42,0.16)] ring-1 ring-black/5" style={{ left: note.position_x, top: note.position_y, width: note.width, height: note.height, backgroundColor: note.background_color }}>
+              <article key={note.id} className="absolute flex flex-col overflow-visible rounded-md shadow-[0_3px_9px_rgba(15,23,42,0.16)] ring-1 ring-black/5" style={{ left: note.position_x, top: note.position_y, width: note.width, height: note.height, backgroundColor: note.background_color, zIndex: note.z_index }}>
                 <div className="flex cursor-grab items-center justify-between border-b border-black/5 px-2 py-1.5 active:cursor-grabbing" onPointerDown={(event) => startNotePointer(event, note, "move")}>
                   <GripHorizontal className="h-4 w-4 opacity-30" />
                   <div className="flex items-center gap-0.5" onPointerDown={(event) => event.stopPropagation()}>
+                    <button type="button" onClick={() => void changeBoardLayer("note", note.id, "back")} className="rounded p-1 hover:bg-black/5" title="맨 뒤로"><MoveDown className="h-3.5 w-3.5" /></button>
+                    <button type="button" onClick={() => void changeBoardLayer("note", note.id, "front")} className="rounded p-1 hover:bg-black/5" title="맨 앞으로"><MoveUp className="h-3.5 w-3.5" /></button>
                     <div className="relative">
                       <button type="button" onClick={() => setNotePaletteId((id) => id === note.id ? null : note.id)} className="rounded p-1 hover:bg-black/5" title="메모지 색상"><Palette className="h-3.5 w-3.5" /></button>
                       {notePaletteId === note.id ? (

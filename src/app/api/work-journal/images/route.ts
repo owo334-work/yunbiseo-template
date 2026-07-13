@@ -36,13 +36,19 @@ export async function POST(request: NextRequest) {
   });
   if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 500 });
 
-  const { count } = await current.admin.from("work_journal_board_images").select("id", { count: "exact", head: true }).eq("employee_id", current.employeeId);
+  const [{ count }, { data: topNote }, { data: topImage }] = await Promise.all([
+    current.admin.from("work_journal_board_images").select("id", { count: "exact", head: true }).eq("employee_id", current.employeeId),
+    current.admin.from("work_journal_notes").select("z_index").eq("employee_id", current.employeeId).order("z_index", { ascending: false }).limit(1).maybeSingle(),
+    current.admin.from("work_journal_board_images").select("z_index").eq("employee_id", current.employeeId).order("z_index", { ascending: false }).limit(1).maybeSingle(),
+  ]);
   const offset = ((count ?? 0) % 8) * 22;
+  const nextLayer = Math.max(topNote?.z_index ?? 0, topImage?.z_index ?? 0) + 1;
   const { data, error } = await current.admin.from("work_journal_board_images").insert({
     employee_id: current.employeeId,
     storage_path: storagePath,
     position_x: 24 + offset,
     position_y: 24 + offset,
+    z_index: nextLayer,
   }).select("*").single();
   if (error) {
     await current.admin.storage.from(BUCKET).remove([storagePath]);
