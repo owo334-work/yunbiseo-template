@@ -70,6 +70,17 @@ type BoardNote = {
   image_paths: string[];
 };
 
+type BoardImage = {
+  id: string;
+  employee_id: string;
+  storage_path: string;
+  position_x: number;
+  position_y: number;
+  width: number;
+  height: number;
+  public_url?: string;
+};
+
 type SchedulePrompt = {
   x: number;
   y: number;
@@ -306,6 +317,7 @@ export function WorkJournal() {
   const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [notes, setNotes] = useState<BoardNote[]>([]);
+  const [boardImages, setBoardImages] = useState<BoardImage[]>([]);
   const [workTasks, setWorkTasks] = useState<WorkStatusTask[]>([]);
   const [sentRequests, setSentRequests] = useState<SentRequest[]>([]);
   const [routineInput, setRoutineInput] = useState<Record<string, string>>({});
@@ -313,7 +325,7 @@ export function WorkJournal() {
   const [loading, setLoading] = useState(true);
   const [bubble, setBubble] = useState<FormatBubble | null>(null);
   const [notePaletteId, setNotePaletteId] = useState<string | null>(null);
-  const [uploadingNoteId, setUploadingNoteId] = useState<string | null>(null);
+  const [uploadingBoardImage, setUploadingBoardImage] = useState(false);
   const [schedulePrompt, setSchedulePrompt] = useState<SchedulePrompt | null>(null);
   const [scheduleSaving, setScheduleSaving] = useState(false);
 
@@ -379,6 +391,19 @@ export function WorkJournal() {
     else setNotes((data ?? []) as BoardNote[]);
   }, [employeeId, supabase]);
 
+  const loadBoardImages = useCallback(async () => {
+    if (!employeeId) return;
+    const { data, error } = await supabase.from("work_journal_board_images").select("*").eq("employee_id", employeeId).order("created_at");
+    if (error) {
+      toast.error("메모보드 이미지를 불러오지 못했습니다.");
+      return;
+    }
+    setBoardImages(((data ?? []) as BoardImage[]).map((image) => ({
+      ...image,
+      public_url: supabase.storage.from(NOTE_IMAGE_BUCKET).getPublicUrl(image.storage_path).data.publicUrl,
+    })));
+  }, [employeeId, supabase]);
+
   const loadWorkTasks = useCallback(async () => {
     if (!employeeId || !authUid) return;
     const [receivedResult, sentResult] = await Promise.all([
@@ -407,9 +432,9 @@ export function WorkJournal() {
   useEffect(() => {
     if (!employeeId) return;
     let active = true;
-    queueMicrotask(() => { if (active) void loadNotes(); });
+    queueMicrotask(() => { if (active) void Promise.all([loadNotes(), loadBoardImages()]); });
     return () => { active = false; };
-  }, [employeeId, loadNotes]);
+  }, [employeeId, loadBoardImages, loadNotes]);
 
   useEffect(() => {
     if (!employeeId || !authUid) return;
@@ -642,50 +667,55 @@ export function WorkJournal() {
     return true;
   };
 
-  const noteImageUrl = (path: string) => supabase.storage.from(NOTE_IMAGE_BUCKET).getPublicUrl(path).data.publicUrl;
-
-  const uploadNoteImage = async (note: BoardNote, file: File) => {
-    if (!employeeId || !file.type.startsWith("image/")) return;
-    if (file.size > MAX_NOTE_IMAGE_BYTES) {
-      toast.error("이미지는 한 장당 10MB 이하로 붙여 넣어주세요.");
-      return;
-    }
-    const extension = file.type.split("/")[1]?.replace("jpeg", "jpg") || "png";
-    const path = `${employeeId}/${note.id}/${crypto.randomUUID()}.${extension}`;
-    setUploadingNoteId(note.id);
-    const { error: uploadError } = await supabase.storage.from(NOTE_IMAGE_BUCKET).upload(path, file, {
-      cacheControl: "3600",
-      contentType: file.type,
-      upsert: false,
-    });
-    if (uploadError) {
-      toast.error(`이미지 붙여넣기에 실패했습니다. (${uploadError.message})`);
-      setUploadingNoteId(null);
-      return;
-    }
-    const nextPaths = [...(note.image_paths ?? []), path];
-    const saved = await updateNote(note.id, { image_paths: nextPaths });
-    if (!saved) await supabase.storage.from(NOTE_IMAGE_BUCKET).remove([path]);
-    else toast.success("이미지를 메모지에 붙였습니다.");
-    setUploadingNoteId(null);
-  };
-
-  const handleNotePaste = async (event: React.ClipboardEvent<HTMLTextAreaElement>, note: BoardNote) => {
+  const handleBoardPaste = async (event: React.ClipboardEvent<HTMLDivElement>) => {
     const images = Array.from(event.clipboardData.items)
       .filter((item) => item.type.startsWith("image/"))
       .map((item) => item.getAsFile())
       .filter((file): file is File => Boolean(file));
     if (images.length === 0) return;
     event.preventDefault();
-    await uploadNoteImage(note, images[0]);
+    const file = images[0];
+    if (file.size > MAX_NOTE_IMAGE_BYTES) {
+      toast.error("이미지는 한 장당 10MB 이하로 붙여 넣어주세요.");
+      return;
+    }
+    setUploadingBoardImage(true);
+    const form = new FormData();
+    form.append("file", file);
+    try {
+      const response = await fetch("/api/work-journal/images", { method: "POST", body: form });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "이미지 업로드 실패");
+      setBoardImages((current) => [...current, result.image as BoardImage]);
+      toast.success("이미지를 메모보드에 붙였습니다.");
+    } catch (error) {
+      toast.error(`이미지 붙여넣기에 실패했습니다. (${error instanceof Error ? error.message : "알 수 없는 오류"})`);
+    } finally {
+      setUploadingBoardImage(false);
+    }
   };
 
-  const removeNoteImage = async (note: BoardNote, path: string) => {
-    const nextPaths = (note.image_paths ?? []).filter((item) => item !== path);
-    const saved = await updateNote(note.id, { image_paths: nextPaths });
-    if (!saved) return;
-    const { error } = await supabase.storage.from(NOTE_IMAGE_BUCKET).remove([path]);
-    if (error) toast.warning("메모에서는 제거했지만 저장소 이미지 삭제에 실패했습니다.");
+  const updateBoardImage = async (id: string, patch: Partial<BoardImage>) => {
+    setBoardImages((current) => current.map((image) => image.id === id ? { ...image, ...patch } : image));
+    const { error } = await supabase.from("work_journal_board_images").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", id);
+    if (error) {
+      toast.error("이미지 위치를 저장하지 못했습니다.");
+      void loadBoardImages();
+    }
+  };
+
+  const removeBoardImage = async (id: string) => {
+    const response = await fetch("/api/work-journal/images", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({}));
+      toast.error(result.error || "이미지를 삭제하지 못했습니다.");
+      return;
+    }
+    setBoardImages((current) => current.filter((image) => image.id !== id));
   };
 
   const removeNote = async (id: string) => {
@@ -732,6 +762,44 @@ export function WorkJournal() {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       void updateNote(note.id, mode === "move"
+        ? { position_x: finalPosition.position_x, position_y: finalPosition.position_y }
+        : { width: finalPosition.width, height: finalPosition.height });
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp, { once: true });
+  };
+
+  const startBoardImagePointer = (event: React.PointerEvent, image: BoardImage, mode: "move" | "resize") => {
+    if (!boardRef.current) return;
+    event.preventDefault();
+    const board = boardRef.current;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const initial = { ...image };
+    let finalPosition = { ...initial };
+    const clamp = (value: number, min: number, max: number) => Math.round(Math.min(Math.max(value, min), Math.max(min, max)));
+    const onMove = (pointer: PointerEvent) => {
+      const dx = pointer.clientX - startX;
+      const dy = pointer.clientY - startY;
+      if (mode === "move") {
+        finalPosition = {
+          ...finalPosition,
+          position_x: clamp(initial.position_x + dx, 0, board.clientWidth - initial.width),
+          position_y: clamp(initial.position_y + dy, 0, board.clientHeight - initial.height),
+        };
+      } else {
+        finalPosition = {
+          ...finalPosition,
+          width: clamp(initial.width + dx, 140, Math.min(NOTE_MAX_SIZE, board.clientWidth - initial.position_x)),
+          height: clamp(initial.height + dy, 100, Math.min(NOTE_MAX_SIZE, board.clientHeight - initial.position_y)),
+        };
+      }
+      setBoardImages((current) => current.map((item) => item.id === image.id ? { ...item, ...finalPosition } : item));
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      void updateBoardImage(image.id, mode === "move"
         ? { position_x: finalPosition.position_x, position_y: finalPosition.position_y }
         : { width: finalPosition.width, height: finalPosition.height });
     };
@@ -900,14 +968,25 @@ export function WorkJournal() {
 
         <div className="surface-panel flex h-full min-h-[760px] min-w-0 flex-col overflow-hidden rounded-[1.5rem] border border-border/60 bg-card/80 shadow-sm backdrop-blur">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 px-4 py-3">
-            <div><h2 className="font-semibold">자유 메모보드</h2><p className="text-xs text-muted-foreground">메모지를 자유롭게 붙이고 정리하세요.</p></div>
+            <div><h2 className="font-semibold">자유 메모보드</h2><p className="text-xs text-muted-foreground">메모지를 붙이거나 보드를 클릭한 뒤 Ctrl+V로 이미지를 추가하세요.</p></div>
             <div className="flex items-center gap-2">
               <Button variant={showArchive ? "secondary" : "outline"} size="sm" onClick={() => setShowArchive((value) => !value)}>{showArchive ? <ArchiveRestore className="mr-1.5 h-4 w-4" /> : <Archive className="mr-1.5 h-4 w-4" />}{showArchive ? "보드로" : "보관함"}</Button>
               <Button size="sm" onClick={() => void addBoardNote()}><Plus className="mr-1.5 h-4 w-4" />메모지</Button>
             </div>
           </div>
-          <div ref={boardRef} className="relative flex-1 overflow-hidden bg-[radial-gradient(circle_at_1px_1px,rgba(100,116,139,0.16)_1px,transparent_0)] [background-size:22px_22px]">
-            {visibleNotes.length === 0 ? <button type="button" onClick={() => void addBoardNote()} className="absolute inset-0 m-auto flex h-32 w-64 flex-col items-center justify-center rounded-2xl border border-dashed border-border text-sm text-muted-foreground hover:border-primary/50 hover:bg-primary/5"><Plus className="mb-2 h-6 w-6" />{showArchive ? "보관한 메모가 없습니다" : "첫 메모지를 붙여보세요"}</button> : null}
+          <div ref={boardRef} tabIndex={0} onPaste={(event) => void handleBoardPaste(event)} className="relative flex-1 overflow-hidden bg-[radial-gradient(circle_at_1px_1px,rgba(100,116,139,0.16)_1px,transparent_0)] [background-size:22px_22px] outline-none focus:ring-2 focus:ring-inset focus:ring-primary/20">
+            {visibleNotes.length === 0 && boardImages.length === 0 ? <button type="button" onClick={() => void addBoardNote()} className="absolute inset-0 m-auto flex h-32 w-64 flex-col items-center justify-center rounded-2xl border border-dashed border-border text-sm text-muted-foreground hover:border-primary/50 hover:bg-primary/5"><Plus className="mb-2 h-6 w-6" />{showArchive ? "보관한 메모가 없습니다" : "메모지를 만들거나 이미지를 붙여보세요"}</button> : null}
+            {!showArchive ? boardImages.map((image) => (
+              <article key={image.id} className="absolute flex flex-col overflow-hidden rounded-md bg-white shadow-[0_3px_9px_rgba(15,23,42,0.16)] ring-1 ring-black/10" style={{ left: image.position_x, top: image.position_y, width: image.width, height: image.height }}>
+                <div className="flex cursor-grab items-center justify-between border-b bg-white/90 px-2 py-1 active:cursor-grabbing" onPointerDown={(event) => startBoardImagePointer(event, image, "move")}>
+                  <GripHorizontal className="h-4 w-4 text-muted-foreground" />
+                  <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={() => void removeBoardImage(image.id)} className="rounded p-1 text-muted-foreground hover:bg-rose-50 hover:text-rose-600" aria-label="이미지 카드 삭제"><Trash2 className="h-3.5 w-3.5" /></button>
+                </div>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={image.public_url} alt="클립보드 이미지" className="min-h-0 flex-1 object-contain" draggable={false} />
+                <button type="button" onPointerDown={(event) => startBoardImagePointer(event, image, "resize")} className="absolute bottom-1 right-1 cursor-nwse-resize rounded bg-white/75 p-1 text-muted-foreground shadow-sm hover:text-primary" aria-label="이미지 카드 크기 조절"><Maximize2 className="h-4 w-4" /></button>
+              </article>
+            )) : null}
             {visibleNotes.map((note) => (
               <article key={note.id} className="absolute flex flex-col overflow-visible rounded-md shadow-[0_3px_9px_rgba(15,23,42,0.16)] ring-1 ring-black/5" style={{ left: note.position_x, top: note.position_y, width: note.width, height: note.height, backgroundColor: note.background_color }}>
                 <div className="flex cursor-grab items-center justify-between border-b border-black/5 px-2 py-1.5 active:cursor-grabbing" onPointerDown={(event) => startNotePointer(event, note, "move")}>
@@ -926,37 +1005,14 @@ export function WorkJournal() {
                     <button type="button" onClick={() => void removeNote(note.id)} className="rounded p-1 hover:bg-rose-500/10 hover:text-rose-700" title="삭제"><Trash2 className="h-3.5 w-3.5" /></button>
                   </div>
                 </div>
-                <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-                  <textarea
-                    value={note.content}
-                    onChange={(event) => setNotes((current) => current.map((item) => item.id === note.id ? { ...item, content: event.target.value } : item))}
-                    onBlur={(event) => void updateNote(note.id, { content: event.target.value })}
-                    onPaste={(event) => void handleNotePaste(event, note)}
-                    placeholder="메모를 적거나 Ctrl+V로 이미지를 붙여보세요..."
-                    className="min-h-16 flex-1 resize-none bg-transparent p-3 leading-relaxed outline-none placeholder:text-current placeholder:opacity-30"
-                    style={{ fontSize: note.font_size, color: note.text_color }}
-                  />
-                  {(note.image_paths ?? []).length > 0 ? (
-                    <div className="grid max-h-[48%] shrink-0 grid-cols-2 gap-1.5 overflow-y-auto border-t border-black/5 p-2">
-                      {note.image_paths.map((path) => (
-                        <div key={path} className="group/image relative overflow-hidden rounded-md bg-white/45 ring-1 ring-black/5">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={noteImageUrl(path)} alt="클립보드 첨부" className="h-24 w-full object-cover" />
-                          <button type="button" onClick={() => void removeNoteImage(note, path)} className="absolute right-1 top-1 rounded-full bg-black/55 p-1 text-white opacity-0 transition-opacity hover:bg-rose-600 group-hover/image:opacity-100" aria-label="첨부 이미지 삭제"><X className="h-3 w-3" /></button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                  {uploadingNoteId === note.id ? (
-                    <div className="absolute inset-0 flex items-center justify-center bg-white/55 text-xs font-medium text-primary backdrop-blur-[1px]">이미지 붙이는 중...</div>
-                  ) : null}
-                </div>
+                <textarea value={note.content} onChange={(event) => setNotes((current) => current.map((item) => item.id === note.id ? { ...item, content: event.target.value } : item))} onBlur={(event) => void updateNote(note.id, { content: event.target.value })} placeholder="간단한 메모를 적어보세요..." className="min-h-0 flex-1 resize-none bg-transparent p-3 leading-relaxed outline-none placeholder:text-current placeholder:opacity-30" style={{ fontSize: note.font_size, color: note.text_color }} />
                 <div className="flex items-end justify-between border-t border-black/5 p-1.5">
                   <select aria-label="메모 글자 크기" value={note.font_size} onChange={(event) => void updateNote(note.id, { font_size: Number(event.target.value) })} className="h-6 rounded-md bg-white/45 px-1 text-[10px] outline-none">{FONT_SIZES.map((size) => <option key={size} value={size}>{size}px</option>)}</select>
                   <button type="button" onPointerDown={(event) => startNotePointer(event, note, "resize")} className="cursor-nwse-resize rounded p-1 opacity-35 hover:bg-black/5 hover:opacity-70" aria-label="메모지 크기 조절"><Maximize2 className="h-4 w-4" /></button>
                 </div>
               </article>
             ))}
+            {uploadingBoardImage ? <div className="absolute inset-0 z-[100] flex items-center justify-center bg-white/45 text-sm font-medium text-primary backdrop-blur-[1px]">이미지 붙이는 중...</div> : null}
           </div>
         </div>
         </ResizablePanel>
