@@ -711,16 +711,27 @@ export function WorkJournal() {
   };
 
   const changeBoardLayer = async (kind: "note" | "image", id: string, direction: "front" | "back") => {
-    const layers = [...notes.map((note) => note.z_index ?? 0), ...boardImages.map((image) => image.z_index ?? 0)];
-    const nextLayer = direction === "front" ? Math.max(0, ...layers) + 1 : Math.min(1, ...layers) - 1;
-    if (kind === "note") {
-      setNotes((current) => current.map((note) => note.id === id ? { ...note, z_index: nextLayer } : note));
-      const { error } = await supabase.from("work_journal_notes").update({ z_index: nextLayer, updated_at: new Date().toISOString() }).eq("id", id);
-      if (error) { toast.error("메모지 앞뒤 순서를 저장하지 못했습니다."); void loadNotes(); }
-    } else {
-      setBoardImages((current) => current.map((image) => image.id === id ? { ...image, z_index: nextLayer } : image));
-      const { error } = await supabase.from("work_journal_board_images").update({ z_index: nextLayer, updated_at: new Date().toISOString() }).eq("id", id);
-      if (error) { toast.error("이미지 앞뒤 순서를 저장하지 못했습니다."); void loadBoardImages(); }
+    const items = [
+      ...notes.map((note) => ({ kind: "note" as const, id: note.id, z_index: Math.max(1, note.z_index ?? 1) })),
+      ...boardImages.map((image) => ({ kind: "image" as const, id: image.id, z_index: Math.max(1, image.z_index ?? 1) })),
+    ].sort((a, b) => a.z_index - b.z_index);
+    const targetIndex = items.findIndex((item) => item.kind === kind && item.id === id);
+    if (targetIndex < 0) return;
+    const [target] = items.splice(targetIndex, 1);
+    if (direction === "front") items.push(target);
+    else items.unshift(target);
+    const ordered = items.map((item, index) => ({ ...item, z_index: index + 1 }));
+    const noteLayers = new Map(ordered.filter((item) => item.kind === "note").map((item) => [item.id, item.z_index]));
+    const imageLayers = new Map(ordered.filter((item) => item.kind === "image").map((item) => [item.id, item.z_index]));
+    setNotes((current) => current.map((note) => ({ ...note, z_index: noteLayers.get(note.id) ?? Math.max(1, note.z_index) })));
+    setBoardImages((current) => current.map((image) => ({ ...image, z_index: imageLayers.get(image.id) ?? Math.max(1, image.z_index) })));
+    const results = await Promise.all(ordered.map((item) => supabase
+      .from(item.kind === "note" ? "work_journal_notes" : "work_journal_board_images")
+      .update({ z_index: item.z_index, updated_at: new Date().toISOString() })
+      .eq("id", item.id)));
+    if (results.some((result) => result.error)) {
+      toast.error("앞뒤 순서를 저장하지 못했습니다.");
+      void Promise.all([loadNotes(), loadBoardImages()]);
     }
   };
 
@@ -994,10 +1005,10 @@ export function WorkJournal() {
               <Button size="sm" onClick={() => void addBoardNote()}><Plus className="mr-1.5 h-4 w-4" />메모지</Button>
             </div>
           </div>
-          <div ref={boardRef} tabIndex={0} onPaste={(event) => void handleBoardPaste(event)} className="relative flex-1 overflow-hidden bg-[radial-gradient(circle_at_1px_1px,rgba(100,116,139,0.16)_1px,transparent_0)] [background-size:22px_22px] outline-none focus:ring-2 focus:ring-inset focus:ring-primary/20">
+          <div ref={boardRef} tabIndex={0} onPaste={(event) => void handleBoardPaste(event)} className="relative flex-1 overflow-hidden bg-[radial-gradient(circle_at_1px_1px,rgba(100,116,139,0.16)_1px,transparent_0)] [background-size:22px_22px] outline-none">
             {visibleNotes.length === 0 && boardImages.length === 0 ? <button type="button" onClick={() => void addBoardNote()} className="absolute inset-0 m-auto flex h-32 w-64 flex-col items-center justify-center rounded-2xl border border-dashed border-border text-sm text-muted-foreground hover:border-primary/50 hover:bg-primary/5"><Plus className="mb-2 h-6 w-6" />{showArchive ? "보관한 메모가 없습니다" : "메모지를 만들거나 이미지를 붙여보세요"}</button> : null}
             {!showArchive ? boardImages.map((image) => (
-              <article key={image.id} className="absolute flex flex-col overflow-hidden rounded-md bg-white shadow-[0_3px_9px_rgba(15,23,42,0.16)] ring-1 ring-black/10" style={{ left: image.position_x, top: image.position_y, width: image.width, height: image.height, zIndex: image.z_index }}>
+              <article key={image.id} className="absolute flex flex-col overflow-hidden rounded-md bg-white shadow-[0_3px_9px_rgba(15,23,42,0.16)] ring-1 ring-black/10" style={{ left: image.position_x, top: image.position_y, width: image.width, height: image.height, zIndex: Math.max(1, image.z_index) }}>
                 <div className="flex cursor-grab items-center justify-between border-b bg-white/90 px-2 py-1 active:cursor-grabbing" onPointerDown={(event) => startBoardImagePointer(event, image, "move")}>
                   <GripHorizontal className="h-4 w-4 text-muted-foreground" />
                   <div className="flex items-center" onPointerDown={(event) => event.stopPropagation()}>
@@ -1012,7 +1023,7 @@ export function WorkJournal() {
               </article>
             )) : null}
             {visibleNotes.map((note) => (
-              <article key={note.id} className="absolute flex flex-col overflow-visible rounded-md shadow-[0_3px_9px_rgba(15,23,42,0.16)] ring-1 ring-black/5" style={{ left: note.position_x, top: note.position_y, width: note.width, height: note.height, backgroundColor: note.background_color, zIndex: note.z_index }}>
+              <article key={note.id} className="absolute flex flex-col overflow-visible rounded-md shadow-[0_3px_9px_rgba(15,23,42,0.16)] ring-1 ring-black/5" style={{ left: note.position_x, top: note.position_y, width: note.width, height: note.height, backgroundColor: note.background_color, zIndex: Math.max(1, note.z_index) }}>
                 <div className="flex cursor-grab items-center justify-between border-b border-black/5 px-2 py-1.5 active:cursor-grabbing" onPointerDown={(event) => startNotePointer(event, note, "move")}>
                   <GripHorizontal className="h-4 w-4 opacity-30" />
                   <div className="flex items-center gap-0.5" onPointerDown={(event) => event.stopPropagation()}>
