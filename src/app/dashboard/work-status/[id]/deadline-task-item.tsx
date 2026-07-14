@@ -85,7 +85,7 @@ export function DeadlineTaskItem({
     task.due_date < new Date().toISOString().slice(0, 10);
 
   return (
-    <Card className="min-w-0 overflow-hidden rounded-lg border-border/70 bg-card/85">
+    <Card className="min-w-0 gap-0 overflow-hidden rounded-lg border-border/70 bg-card/85 py-0 shadow-sm">
       <CardContent className="space-y-0.5 px-2 py-1.5">
         <div className="flex items-start justify-between gap-2">
           <button
@@ -196,7 +196,7 @@ export function DeadlineTaskItem({
             }}
             placeholder="메모 (업무 관련 메모를 적어두세요)"
             rows={1}
-            className="min-h-6 w-full resize-y rounded-md border border-border/70 bg-background/80 px-2 py-0.5 text-xs leading-5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+            className="h-7 min-h-7 w-full resize-none overflow-y-auto rounded-md border border-border/70 bg-background/80 px-2 py-0.5 text-xs leading-5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
           />
         ) : memo ? (
           <p className="whitespace-pre-wrap rounded-lg bg-muted/50 px-2.5 py-1.5 text-xs text-muted-foreground">
