@@ -308,6 +308,7 @@ function SidebarNav({
 }) {
   const pathname = usePathname();
   const [journalEmployees, setJournalEmployees] = useState<Array<{ id: string; name: string }>>([]);
+  const [journalExpanded, setJournalExpanded] = useState(() => pathname.startsWith("/dashboard/work-journal"));
 
   useEffect(() => {
     const supabase = createClient();
@@ -338,8 +339,23 @@ function SidebarNav({
           <div className="space-y-1">
             {section.items.map((item) => (
               <div key={item.label}>
-                <NavItem item={item} collapsed={collapsed} onNavigate={onNavigate} pathname={pathname} />
-                {item.href === "/dashboard/work-journal" && !collapsed && journalEmployees.length > 0 ? (
+                <div className="relative">
+                  <NavItem item={item} collapsed={collapsed} onNavigate={onNavigate} pathname={pathname} />
+                  {item.href === "/dashboard/work-journal" && !collapsed && journalEmployees.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => setJournalExpanded((value) => !value)}
+                      className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-current/70 hover:bg-white/15 hover:text-current"
+                      aria-label={journalExpanded ? "직원 업무일지 메뉴 접기" : "직원 업무일지 메뉴 펼치기"}
+                      aria-expanded={journalExpanded}
+                    >
+                      <svg className={cn("h-3.5 w-3.5 transition-transform", journalExpanded && "rotate-180")} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="m6 9 6 6 6-6" />
+                      </svg>
+                    </button>
+                  ) : null}
+                </div>
+                {item.href === "/dashboard/work-journal" && !collapsed && journalExpanded && journalEmployees.length > 0 ? (
                   <div className="ml-7 mt-1 space-y-0.5 border-l border-primary/15 pl-2">
                     {journalEmployees.map((employee) => {
                       const href = `/dashboard/work-journal/${employee.id}`;

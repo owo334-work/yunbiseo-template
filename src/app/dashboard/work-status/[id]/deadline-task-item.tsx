@@ -85,8 +85,8 @@ export function DeadlineTaskItem({
     task.due_date < new Date().toISOString().slice(0, 10);
 
   return (
-    <Card className="border-border/70 bg-card/85">
-      <CardContent className="space-y-1.5 p-2.5">
+    <Card className="rounded-lg border-border/70 bg-card/85">
+      <CardContent className="space-y-1 p-2">
         <div className="flex items-start justify-between gap-2">
           <button
             type="button"
@@ -111,7 +111,7 @@ export function DeadlineTaskItem({
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+              className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
               onClick={async () => {
                 if (!confirm(`'${task.title}' 업무를 삭제할까요?`)) return;
                 const { error } = await supabase
@@ -196,7 +196,7 @@ export function DeadlineTaskItem({
             }}
             placeholder="메모 (업무 관련 메모를 적어두세요)"
             rows={1}
-            className="min-h-8 w-full resize-y rounded-lg border border-border/70 bg-background/80 px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+            className="min-h-7 w-full resize-y rounded-md border border-border/70 bg-background/80 px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
           />
         ) : memo ? (
           <p className="whitespace-pre-wrap rounded-lg bg-muted/50 px-2.5 py-1.5 text-xs text-muted-foreground">
