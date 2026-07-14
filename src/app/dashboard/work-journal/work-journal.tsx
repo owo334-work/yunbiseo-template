@@ -34,7 +34,7 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useDefaultLayout } from "react-resizable-panels";
+import type { GroupImperativeHandle, Layout } from "react-resizable-panels";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -112,16 +112,8 @@ const NOTE_MAX_SIZE = 2400;
 const NOTE_IMAGE_BUCKET = "work-journal-images";
 const MAX_NOTE_IMAGE_BYTES = 10 * 1024 * 1024;
 const NO_AUTH_UID = "00000000-0000-0000-0000-000000000000";
-// useDefaultLayout의 기본 저장소는 서버 렌더링 중에도 localStorage를 참조한다.
-// 서버에서는 빈 값으로 응답하고, 브라우저에서만 실제 크기를 저장·복원한다.
-const PANEL_LAYOUT_STORAGE = {
-  getItem(key: string) {
-    return typeof window === "undefined" ? null : window.localStorage.getItem(key);
-  },
-  setItem(key: string, value: string) {
-    if (typeof window !== "undefined") window.localStorage.setItem(key, value);
-  },
-};
+const MAIN_PANEL_LAYOUT_KEY = "work-journal-main-panels-v3";
+const WEEKLY_PANEL_LAYOUT_KEY = "work-journal-weekly-panels-v3";
 const ROUTINE_LISTS: Array<{ key: WorkListType; label: string }> = [
   { key: "daily", label: "일간" },
   { key: "weekly", label: "주간" },
@@ -327,6 +319,9 @@ export function WorkJournal({ targetEmployeeId }: { targetEmployeeId?: string })
   const selectionRef = useRef<Range | null>(null);
   const selectedEditorRef = useRef<HTMLDivElement | null>(null);
   const selectedDateRef = useRef<string | null>(null);
+  const mainPanelGroupRef = useRef<GroupImperativeHandle | null>(null);
+  const weeklyPanelGroupRef = useRef<GroupImperativeHandle | null>(null);
+  const panelLayoutsReadyRef = useRef(false);
   const [employeeId, setEmployeeId] = useState<string | null>(null);
   const [employeeName, setEmployeeName] = useState<string | null>(null);
   const [actorAuthUid, setActorAuthUid] = useState<string | null>(null);
@@ -346,16 +341,28 @@ export function WorkJournal({ targetEmployeeId }: { targetEmployeeId?: string })
   const [uploadingBoardImage, setUploadingBoardImage] = useState(false);
   const [schedulePrompt, setSchedulePrompt] = useState<SchedulePrompt | null>(null);
   const [scheduleSaving, setScheduleSaving] = useState(false);
-  const mainPanelLayout = useDefaultLayout({
-    id: "work-journal-main-panels-v2",
-    panelIds: ["weekly-work-area", "free-memo-board"],
-    storage: PANEL_LAYOUT_STORAGE,
-  });
-  const weeklyPanelLayout = useDefaultLayout({
-    id: "work-journal-weekly-panels-v2",
-    panelIds: ["weekly-journal", "work-status-widgets"],
-    storage: PANEL_LAYOUT_STORAGE,
-  });
+  const saveMainPanelLayout = useCallback((layout: Layout) => {
+    if (panelLayoutsReadyRef.current) window.localStorage.setItem(MAIN_PANEL_LAYOUT_KEY, JSON.stringify(layout));
+  }, []);
+  const saveWeeklyPanelLayout = useCallback((layout: Layout) => {
+    if (panelLayoutsReadyRef.current) window.localStorage.setItem(WEEKLY_PANEL_LAYOUT_KEY, JSON.stringify(layout));
+  }, []);
+
+  useEffect(() => {
+    const restore = (key: string, panelIds: string[], group: GroupImperativeHandle | null) => {
+      const saved = window.localStorage.getItem(key);
+      if (!saved || !group) return;
+      try {
+        const layout = JSON.parse(saved) as Layout;
+        if (panelIds.every((id) => Number.isFinite(layout[id]) && layout[id] > 0)) group.setLayout(layout);
+      } catch {
+        window.localStorage.removeItem(key);
+      }
+    };
+    restore(MAIN_PANEL_LAYOUT_KEY, ["weekly-work-area", "free-memo-board"], mainPanelGroupRef.current);
+    restore(WEEKLY_PANEL_LAYOUT_KEY, ["weekly-journal", "work-status-widgets"], weeklyPanelGroupRef.current);
+    panelLayoutsReadyRef.current = true;
+  }, []);
 
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)), [weekStart]);
   const visibleNotes = useMemo(() => notes.filter((note) => note.is_archived === showArchive), [notes, showArchive]);
@@ -966,10 +973,10 @@ export function WorkJournal({ targetEmployeeId }: { targetEmployeeId?: string })
         <Button variant="outline" size="sm" onClick={() => { const today = new Date(); goToWeek(today); setCalendarMonth(startOfMonth(today)); }}><RotateCcw className="mr-1.5 h-4 w-4" />이번 주</Button>
       </header>
 
-      <ResizablePanelGroup orientation="horizontal" className="min-h-[880px] flex-1" {...mainPanelLayout}>
+      <ResizablePanelGroup id="work-journal-main-group" groupRef={mainPanelGroupRef} onLayoutChanged={saveMainPanelLayout} orientation="horizontal" className="min-h-[880px] flex-1">
         <ResizablePanel id="weekly-work-area" defaultSize="62%" minSize="42%">
           <div className="h-full min-w-0 pr-1.5">
-          <ResizablePanelGroup orientation="vertical" className="h-full" {...weeklyPanelLayout}>
+          <ResizablePanelGroup id="work-journal-weekly-group" groupRef={weeklyPanelGroupRef} onLayoutChanged={saveWeeklyPanelLayout} orientation="vertical" className="h-full">
           <ResizablePanel id="weekly-journal" defaultSize="58%" minSize="34%">
         <div className="surface-panel flex h-full min-w-0 flex-col overflow-hidden rounded-[1.5rem] border border-border/60 bg-card/80 shadow-sm backdrop-blur">
           <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border/60 p-3">
@@ -1017,7 +1024,7 @@ export function WorkJournal({ targetEmployeeId }: { targetEmployeeId?: string })
         </div>
 
           </ResizablePanel>
-          <ResizableHandle withHandle className="my-1.5" />
+          <ResizableHandle id="work-journal-weekly-separator" withHandle className="my-1.5" />
           <ResizablePanel id="work-status-widgets" defaultSize="42%" minSize="22%">
 
         <div className="grid h-full min-h-0 min-w-0 grid-cols-1 gap-3 overflow-x-hidden overflow-y-hidden lg:grid-cols-2">
@@ -1044,7 +1051,7 @@ export function WorkJournal({ targetEmployeeId }: { targetEmployeeId?: string })
           </div>
         </ResizablePanel>
 
-        <ResizableHandle withHandle className="mx-1.5" />
+        <ResizableHandle id="work-journal-main-separator" withHandle className="mx-1.5" />
 
         <ResizablePanel id="free-memo-board" defaultSize="38%" minSize="25%">
 
