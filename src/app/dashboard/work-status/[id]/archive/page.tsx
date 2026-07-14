@@ -16,7 +16,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/client";
 import type { Employee, WorkStatusTask } from "@/lib/types";
-import { WORK_STATUS_STYLES } from "@/lib/work-status";
 
 // 완료월 그룹 키/라벨 (completed_at 우선, 없으면 archived_at → created_at)
 function monthOf(task: WorkStatusTask): string {
@@ -188,10 +187,10 @@ export default function WorkStatusArchivePage() {
     <PageShell>
       <PageHeader
         breadcrumbs={[
-          { label: "업무현황", href: "/dashboard/work-status" },
+          { label: "업무일지", href: `/dashboard/work-journal/${employeeId}` },
           {
-            label: `${employee.name}의 업무 대시보드`,
-            href: `/dashboard/work-status/${employeeId}`,
+            label: `${employee.name} 업무일지`,
+            href: `/dashboard/work-journal/${employeeId}`,
           },
           { label: "지난 업무 보관함" },
         ]}
@@ -203,7 +202,7 @@ export default function WorkStatusArchivePage() {
         <EmptyState
           icon={Archive}
           title="보관된 업무가 없습니다."
-          description="대시보드에서 완료된 마감업무·요청사항을 '보관함으로' 옮기면 여기에 월별로 쌓입니다."
+          description="업무일지에서 완료된 마감업무·요청사항을 '보관함으로' 옮기면 여기에 월별로 쌓입니다."
         />
       ) : (
         <div className="space-y-4">

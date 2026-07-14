@@ -16,6 +16,7 @@ import {
   subWeeks,
 } from "date-fns";
 import { ko } from "date-fns/locale";
+import Link from "next/link";
 import {
   Archive,
   ArchiveRestore,
@@ -1033,6 +1034,13 @@ export function WorkJournal({ targetEmployeeId }: { targetEmployeeId?: string })
               <CalendarCheck className="h-4 w-4 text-primary" />
               <h3 className="text-sm font-semibold">마감기한 업무 · 요청받은 업무</h3>
               <span className="text-xs text-muted-foreground">({workTasks.filter((task) => task.list_type === "deadline" || task.list_type === "instruction").length})</span>
+              {employeeId ? (
+                <Button asChild variant="outline" size="xs" className="ml-auto">
+                  <Link href={`/dashboard/work-status/${employeeId}/archive`}>
+                    <Archive className="h-3 w-3" />업무 보관함
+                  </Link>
+                </Button>
+              ) : null}
             </div>
             <div className="min-h-0 min-w-0 flex-1 space-y-1 overflow-x-hidden overflow-y-auto pr-1">
               {workTasks.filter((task) => task.list_type === "deadline" || task.list_type === "instruction").length === 0 ? (
