@@ -891,11 +891,11 @@ export function WorkJournal({ targetEmployeeId }: { targetEmployeeId?: string })
     const entry = entries.find((item) => item.journal_date === dateKey(day));
     return (
       <section key={dateKey(day)} className={cn(
-        "flex min-h-0 flex-col bg-[radial-gradient(circle_at_1px_1px,rgba(100,116,139,0.12)_1px,transparent_0)] [background-size:18px_18px]",
+        "flex min-h-0 min-w-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_1px_1px,rgba(100,116,139,0.12)_1px,transparent_0)] [background-size:18px_18px]",
         weekend ? "min-h-[175px]" : "min-h-[380px]"
       )}>
-        <div className="border-b border-primary/45 px-3 py-2">
-          <strong className={cn("text-2xl font-semibold text-primary", day.getDay() === 0 && "text-rose-500", day.getDay() === 6 && "text-blue-500")}>{format(day, "dd")}</strong>
+        <div className="border-b border-primary/45 px-2 py-2 xl:px-3">
+          <strong className={cn("text-xl font-semibold text-primary xl:text-2xl", day.getDay() === 0 && "text-rose-500", day.getDay() === 6 && "text-blue-500")}>{format(day, "dd")}</strong>
           <span className="ml-1.5 text-[10px] font-medium text-muted-foreground">{format(day, "EEE", { locale: ko })}</span>
         </div>
         <div
@@ -941,7 +941,7 @@ export function WorkJournal({ targetEmployeeId }: { targetEmployeeId?: string })
           }}
           onBlur={(event) => void saveDay(dateKey(day), event.currentTarget.innerHTML)}
           className={cn(
-            "min-h-0 flex-1 cursor-text overflow-y-auto p-3 text-[14px] leading-relaxed text-slate-700 outline-none",
+            "min-h-0 min-w-0 flex-1 cursor-text overflow-y-auto p-2 text-[14px] leading-relaxed text-slate-700 outline-none [overflow-wrap:anywhere] xl:p-3",
             // li 가 남아 있어도 div 문단과 같은 문단기호로 보이도록 마커 대신 ::before 로 통일한다.
             "[&_ul]:m-0 [&_ul]:list-none [&_ul]:p-0 [&_ol]:m-0 [&_ol]:list-none [&_ol]:p-0",
             "[&>div]:relative [&>div]:min-h-[1.5em] [&>div]:pl-4 [&>div]:before:absolute [&>div]:before:left-0 [&>div]:before:text-[14px] [&>div]:before:content-['•']",
@@ -1007,8 +1007,8 @@ export function WorkJournal({ targetEmployeeId }: { targetEmployeeId?: string })
             </div>
           </div>
           {loading ? <div className="p-12 text-center text-sm text-muted-foreground">업무일지를 불러오는 중...</div> : (
-            <div className="min-h-0 flex-1 overflow-x-auto">
-              <div className="grid h-full min-w-[900px] grid-cols-6 divide-x divide-primary/35">
+            <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden">
+              <div className="grid h-full min-w-0 grid-cols-6 divide-x divide-primary/35">
                 {weekDays.slice(0, 5).map((day) => renderDay(day))}
                 <div className="grid grid-rows-2 divide-y divide-primary/35">{renderDay(weekDays[5], true)}{renderDay(weekDays[6], true)}</div>
               </div>
@@ -1020,14 +1020,14 @@ export function WorkJournal({ targetEmployeeId }: { targetEmployeeId?: string })
           <ResizableHandle withHandle className="my-1.5" />
           <ResizablePanel id="work-status-widgets" defaultSize="42%" minSize="22%">
 
-        <div className="grid h-full min-h-0 grid-cols-1 gap-3 overflow-hidden lg:grid-cols-2">
-          <div className="flex min-h-0 flex-col rounded-[1.25rem] border border-border/60 bg-card/80 p-3">
+        <div className="grid h-full min-h-0 min-w-0 grid-cols-1 gap-3 overflow-x-hidden overflow-y-hidden lg:grid-cols-2">
+          <div className="flex min-h-0 min-w-0 flex-col overflow-x-hidden rounded-[1.25rem] border border-border/60 bg-card/80 p-3">
             <div className="mb-2 flex items-center gap-2">
               <CalendarCheck className="h-4 w-4 text-primary" />
               <h3 className="text-sm font-semibold">마감기한 업무 · 요청받은 업무</h3>
               <span className="text-xs text-muted-foreground">({workTasks.filter((task) => task.list_type === "deadline" || task.list_type === "instruction").length})</span>
             </div>
-            <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
+            <div className="min-h-0 min-w-0 flex-1 space-y-1 overflow-x-hidden overflow-y-auto pr-1">
               {workTasks.filter((task) => task.list_type === "deadline" || task.list_type === "instruction").length === 0 ? (
                 <p className="py-4 text-center text-xs text-muted-foreground">표시할 마감·요청 업무가 없습니다.</p>
               ) : workTasks.filter((task) => task.list_type === "deadline" || task.list_type === "instruction").map((task) => (
@@ -1035,7 +1035,7 @@ export function WorkJournal({ targetEmployeeId }: { targetEmployeeId?: string })
               ))}
             </div>
           </div>
-          <div className="min-h-0 overflow-y-auto [&>div]:h-full">
+          <div className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto [&>div]:h-full [&>div]:min-w-0">
             <RequestSentBoard requests={sentRequests} />
           </div>
         </div>

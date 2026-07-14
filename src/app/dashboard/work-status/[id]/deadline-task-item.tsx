@@ -85,7 +85,7 @@ export function DeadlineTaskItem({
     task.due_date < new Date().toISOString().slice(0, 10);
 
   return (
-    <Card className="rounded-lg border-border/70 bg-card/85">
+    <Card className="min-w-0 overflow-hidden rounded-lg border-border/70 bg-card/85">
       <CardContent className="space-y-0.5 px-2 py-1.5">
         <div className="flex items-start justify-between gap-2">
           <button
@@ -100,7 +100,7 @@ export function DeadlineTaskItem({
               <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
             )}
             <span
-              className={`text-sm font-medium ${
+              className={`min-w-0 break-words text-sm font-medium ${
                 status === "완료" ? "text-muted-foreground line-through" : "text-foreground"
               }`}
             >
@@ -135,7 +135,7 @@ export function DeadlineTaskItem({
           <>
         {/* 마감일 · 진척도 · 상태를 한 줄에 배치해 카드 높이를 줄인다. */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 break-words">
             {task.due_date ? (
               <span className={isOverdue ? "font-medium text-rose-600" : "text-muted-foreground"}>
                 마감 {task.due_date}{isOverdue ? " (기한 초과)" : ""}
@@ -147,7 +147,7 @@ export function DeadlineTaskItem({
               <span className="text-emerald-600">완료 {task.completed_at.slice(0, 10)}</span>
             ) : null}
           </div>
-          <div className="ml-auto flex min-w-[150px] max-w-[230px] flex-1 items-center gap-2">
+          <div className="ml-auto flex min-w-[110px] max-w-[230px] flex-1 items-center gap-2">
             {canEdit ? (
               <input
                 type="range"

@@ -21,7 +21,7 @@ function progressTone(value: number) {
 
 export function RequestSentBoard({ requests }: { requests: SentRequest[] }) {
   return (
-    <Card className="rounded-[1rem] border-border/70 bg-card/85">
+    <Card className="min-w-0 overflow-x-hidden rounded-[1rem] border-border/70 bg-card/85">
       <CardHeader className="px-3 pb-1.5 pt-3">
         <CardTitle className="flex items-center gap-2 text-sm">
           <Send className="h-4 w-4 text-primary" />
@@ -50,11 +50,11 @@ export function RequestSentBoard({ requests }: { requests: SentRequest[] }) {
             return (
               <div
                 key={task.id}
-                className="space-y-1.5 rounded-lg border border-border/60 bg-background/50 p-2.5"
+                className="min-w-0 space-y-1.5 overflow-hidden rounded-lg border border-border/60 bg-background/50 p-2.5"
               >
                 <div className="flex items-start justify-between gap-2">
                   <p
-                    className={`text-sm font-medium ${
+                    className={`min-w-0 break-words text-sm font-medium ${
                       status === "완료" ? "text-muted-foreground line-through" : "text-foreground"
                     }`}
                   >
@@ -85,7 +85,7 @@ export function RequestSentBoard({ requests }: { requests: SentRequest[] }) {
                     <span>마감기한 없음</span>
                   )}
                   {/* 마감일과 같은 줄에 짧은 진척도 바를 표시한다. */}
-                  <div className="ml-auto flex min-w-[140px] max-w-[220px] flex-1 items-center gap-2">
+                  <div className="ml-auto flex min-w-[110px] max-w-[220px] flex-1 items-center gap-2">
                   <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
                     <div
                       className={`h-full rounded-full ${progressTone(progress)}`}
@@ -99,7 +99,7 @@ export function RequestSentBoard({ requests }: { requests: SentRequest[] }) {
                 </div>
 
                 {task.detail ? (
-                  <p className="whitespace-pre-wrap rounded-md bg-muted/50 px-2 py-1.5 text-xs text-muted-foreground">
+                  <p className="whitespace-pre-wrap break-words rounded-md bg-muted/50 px-2 py-1.5 text-xs text-muted-foreground [overflow-wrap:anywhere]">
                     {task.detail}
                   </p>
                 ) : null}
