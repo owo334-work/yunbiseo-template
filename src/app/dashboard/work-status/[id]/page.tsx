@@ -183,6 +183,7 @@ export default function WorkStatusDetailPage() {
         .eq("list_type", "instruction")
         .eq("created_by", myInfo.authUid)
         .neq("employee_id", employeeId)
+        .is("requester_hidden_at", null)
         .order("created_at", { ascending: false })
         .limit(500);
       setSentRequests((sent ?? []) as SentRequest[]);

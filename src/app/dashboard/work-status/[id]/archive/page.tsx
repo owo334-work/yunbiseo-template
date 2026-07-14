@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, ChevronDown, ChevronRight, RotateCcw, Trash2 } from "lucide-react";
+import { Archive, ChevronDown, ChevronLeft, ChevronRight, RotateCcw, Search, Trash2 } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -14,6 +14,7 @@ import {
 } from "@/components/page-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
 import type { Employee, WorkStatusTask } from "@/lib/types";
 
@@ -47,6 +48,8 @@ export default function WorkStatusArchivePage() {
     isAdmin: false,
   });
   const [openMonths, setOpenMonths] = useState<Record<string, boolean>>({});
+  const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -77,6 +80,8 @@ export default function WorkStatusArchivePage() {
     setEmployee(employeeRes.data as Employee);
     const archived = taskRes.error ? [] : ((taskRes.data ?? []) as WorkStatusTask[]);
     setTasks(archived);
+    const months = Array.from(new Set(archived.map(monthOf))).sort((a, b) => (a < b ? 1 : -1));
+    setSelectedMonth((current) => current && months.includes(current) ? current : (months[0] ?? null));
 
     // 요청사항 보낸 사람 이름 (created_by = auth_uid) 매핑
     const senderUids = Array.from(
@@ -125,17 +130,31 @@ export default function WorkStatusArchivePage() {
 
   const canEdit = (me.id != null && me.id === employeeId) || me.isAdmin;
 
-  // 완료월별 그룹 (월은 최신순, 월 안은 받은/추가 날짜순)
+  const monthKeys = useMemo(
+    () => Array.from(new Set(tasks.map(monthOf))).sort((a, b) => (a < b ? 1 : -1)),
+    [tasks],
+  );
+  const selectedMonthIndex = selectedMonth ? monthKeys.indexOf(selectedMonth) : -1;
+
+  // 검색 중에는 전체 월에서 찾고, 평소에는 선택한 한 달만 표시한다.
   const groups = useMemo(() => {
+    const keyword = search.trim().toLocaleLowerCase("ko-KR");
+    const visible = tasks.filter((task) => {
+      if (!keyword) return selectedMonth != null && monthOf(task) === selectedMonth;
+      const sender = task.created_by ? senders[task.created_by] ?? "" : "";
+      const kind = task.list_type === "instruction" ? "요청사항" : "마감업무";
+      return [task.title, task.detail ?? "", sender, kind]
+        .some((value) => value.toLocaleLowerCase("ko-KR").includes(keyword));
+    });
     const map = new Map<string, WorkStatusTask[]>();
-    for (const t of tasks) {
+    for (const t of visible) {
       const key = monthOf(t);
       const arr = map.get(key);
       if (arr) arr.push(t);
       else map.set(key, [t]);
     }
     return Array.from(map.entries()).sort((a, b) => (a[0] < b[0] ? 1 : -1));
-  }, [tasks]);
+  }, [search, selectedMonth, senders, tasks]);
 
   const isOpen = (key: string, index: number) => openMonths[key] ?? index === 0;
   const toggleMonth = (key: string, index: number) =>
@@ -198,7 +217,7 @@ export default function WorkStatusArchivePage() {
         description="완료 후 보관한 마감업무·요청사항을 완료한 달 기준으로 모아 둡니다. 월 안에서는 받은/추가한 날짜순으로 정렬됩니다."
       />
 
-      {groups.length === 0 ? (
+      {tasks.length === 0 ? (
         <EmptyState
           icon={Archive}
           title="보관된 업무가 없습니다."
@@ -206,6 +225,39 @@ export default function WorkStatusArchivePage() {
         />
       ) : (
         <div className="space-y-4">
+          <div className="flex flex-col gap-2 rounded-xl border border-border/60 bg-card/75 p-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center justify-center gap-2">
+              <Button
+                variant="outline"
+                size="icon-sm"
+                disabled={selectedMonthIndex < 0 || selectedMonthIndex >= monthKeys.length - 1 || Boolean(search.trim())}
+                onClick={() => setSelectedMonth(monthKeys[selectedMonthIndex + 1])}
+                aria-label="이전 달"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <div className="min-w-32 text-center text-sm font-semibold">
+                {search.trim() ? `검색 결과 ${groups.reduce((sum, [, items]) => sum + items.length, 0)}건` : selectedMonth ? monthLabel(selectedMonth) : "보관함"}
+              </div>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                disabled={selectedMonthIndex <= 0 || Boolean(search.trim())}
+                onClick={() => setSelectedMonth(monthKeys[selectedMonthIndex - 1])}
+                aria-label="다음 달"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="relative w-full sm:max-w-sm">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="업무내용·메모·요청자 검색" className="h-8 pl-8 text-sm" />
+            </div>
+          </div>
+
+          {groups.length === 0 ? (
+            <EmptyState icon={Search} title="검색 결과가 없습니다." description="다른 검색어를 입력해 보세요." />
+          ) : null}
           {groups.map(([key, items], index) => {
             const open = isOpen(key, index);
             return (

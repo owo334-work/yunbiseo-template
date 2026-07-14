@@ -30,14 +30,14 @@ export function RequestSentBoard({ requests, onDeleted }: { requests: SentReques
     if (task.status !== "완료" || deletingId) return;
     if (!window.confirm("완료된 업무를 삭제할까요?")) return;
     setDeletingId(task.id);
-    const { error } = await supabase.from("work_status_tasks").delete().eq("id", task.id);
+    const { data, error } = await supabase.rpc("hide_completed_sent_request", { p_task_id: task.id });
     setDeletingId(null);
-    if (error) {
-      toast.error("완료 업무를 삭제하지 못했습니다.");
+    if (error || data !== true) {
+      toast.error("요청 업무 목록에서 삭제하지 못했습니다.");
       return;
     }
     onDeleted(task.id);
-    toast.success("완료된 요청 업무를 삭제했습니다.");
+    toast.success("내가 요청한 업무 목록에서 삭제했습니다. 작업자의 보관 기록은 유지됩니다.");
   };
 
   return (
