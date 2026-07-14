@@ -46,6 +46,7 @@ export interface WorkStatusTask {
   created_by: string | null;
   completed_at: string | null; // '완료'가 된 시각 (완료날짜)
   archived_at: string | null; // 보관 시각 (NULL=활성 목록, 값=보관함)
+  recipient_deleted_at?: string | null; // 요청받은 직원 화면에서 삭제한 시각
   routine_checked_key?: string | null; // 고정업무가 완료된 현재 일/주/월 주기
   created_at: string;
   updated_at: string;

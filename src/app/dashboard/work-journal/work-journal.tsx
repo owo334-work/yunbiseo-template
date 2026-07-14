@@ -466,8 +466,8 @@ export function WorkJournal({ targetEmployeeId }: { targetEmployeeId?: string })
   const loadWorkTasks = useCallback(async () => {
     if (!employeeId || !ownerAuthUid) return;
     const [receivedResult, sentResult] = await Promise.all([
-      supabase.from("work_status_tasks").select("*").eq("employee_id", employeeId).is("archived_at", null).order("sort_order").order("created_at"),
-      supabase.from("work_status_tasks").select("*, employee:employees!work_status_tasks_employee_id_fkey(id, name, department)").eq("created_by", ownerAuthUid).eq("list_type", "instruction").is("archived_at", null).order("created_at", { ascending: false }),
+      supabase.from("work_status_tasks").select("*").eq("employee_id", employeeId).is("archived_at", null).is("recipient_deleted_at", null).order("sort_order").order("created_at"),
+      supabase.from("work_status_tasks").select("*, employee:employees!work_status_tasks_employee_id_fkey(id, name, department)").eq("created_by", ownerAuthUid).eq("list_type", "instruction").order("created_at", { ascending: false }),
     ]);
     if (receivedResult.error || sentResult.error) {
       toast.error("업무 위젯을 불러오지 못했습니다.");
@@ -1043,7 +1043,7 @@ export function WorkJournal({ targetEmployeeId }: { targetEmployeeId?: string })
             </div>
           </div>
           <div className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto [&>div]:h-full [&>div]:min-w-0">
-            <RequestSentBoard requests={sentRequests} />
+            <RequestSentBoard requests={sentRequests} onDeleted={(id) => setSentRequests((current) => current.filter((item) => item.id !== id))} />
           </div>
         </div>
           </ResizablePanel>

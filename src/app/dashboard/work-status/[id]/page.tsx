@@ -328,7 +328,7 @@ export default function WorkStatusDetailPage() {
     (t) => t.list_type === "deadline" && t.archived_at == null,
   );
   const instructionTasks = tasks.filter(
-    (t) => t.list_type === "instruction" && t.archived_at == null,
+    (t) => t.list_type === "instruction" && t.archived_at == null && t.recipient_deleted_at == null,
   );
 
   // 완료된 항목을 한꺼번에 보관함으로 넘기기
@@ -584,7 +584,7 @@ export default function WorkStatusDetailPage() {
   if (isOwner) {
     widgets.push({
       id: "request-sent",
-      node: <RequestSentBoard requests={sentRequests} />,
+      node: <RequestSentBoard requests={sentRequests} onDeleted={(id) => setSentRequests((current) => current.filter((item) => item.id !== id))} />,
     });
   }
 

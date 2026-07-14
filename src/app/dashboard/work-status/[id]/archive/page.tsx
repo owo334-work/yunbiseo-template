@@ -64,6 +64,7 @@ export default function WorkStatusArchivePage() {
         .eq("employee_id", employeeId)
         .in("list_type", ["deadline", "instruction"])
         .not("archived_at", "is", null)
+        .is("recipient_deleted_at", null)
         .order("created_at", { ascending: true })
         .limit(3000),
     ]);

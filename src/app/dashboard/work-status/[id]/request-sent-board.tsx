@@ -1,8 +1,11 @@
 "use client";
 
 import { Send } from "lucide-react";
+import { useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { createClient } from "@/lib/supabase/client";
 import type { WorkStatusTask, WorkStatusValue } from "@/lib/types";
 import { WORK_STATUS_STYLES } from "@/lib/work-status";
 
@@ -19,7 +22,24 @@ function progressTone(value: number) {
   return "bg-slate-300";
 }
 
-export function RequestSentBoard({ requests }: { requests: SentRequest[] }) {
+export function RequestSentBoard({ requests, onDeleted }: { requests: SentRequest[]; onDeleted: (id: string) => void }) {
+  const supabase = useMemo(() => createClient(), []);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const deleteCompletedRequest = async (task: SentRequest) => {
+    if (task.status !== "완료" || deletingId) return;
+    if (!window.confirm("완료된 업무를 삭제할까요?")) return;
+    setDeletingId(task.id);
+    const { error } = await supabase.from("work_status_tasks").delete().eq("id", task.id);
+    setDeletingId(null);
+    if (error) {
+      toast.error("완료 업무를 삭제하지 못했습니다.");
+      return;
+    }
+    onDeleted(task.id);
+    toast.success("완료된 요청 업무를 삭제했습니다.");
+  };
+
   return (
     <Card className="min-w-0 overflow-x-hidden rounded-[1rem] border-border/70 bg-card/85">
       <CardHeader className="px-3 pb-1.5 pt-3">
@@ -43,6 +63,7 @@ export function RequestSentBoard({ requests }: { requests: SentRequest[] }) {
           requests.map((task) => {
             const progress = task.progress ?? 0;
             const status = task.status as WorkStatusValue;
+            const recipientDeleted = Boolean(task.recipient_deleted_at);
             const isOverdue =
               task.due_date != null &&
               status !== "완료" &&
@@ -50,7 +71,21 @@ export function RequestSentBoard({ requests }: { requests: SentRequest[] }) {
             return (
               <div
                 key={task.id}
-                className="min-w-0 space-y-1.5 overflow-hidden rounded-lg border border-border/60 bg-background/50 p-2.5"
+                role={status === "완료" ? "button" : undefined}
+                tabIndex={status === "완료" ? 0 : undefined}
+                onClick={() => void deleteCompletedRequest(task)}
+                onKeyDown={(event) => {
+                  if (status === "완료" && (event.key === "Enter" || event.key === " ")) {
+                    event.preventDefault();
+                    void deleteCompletedRequest(task);
+                  }
+                }}
+                className={`min-w-0 space-y-1.5 overflow-hidden rounded-lg border p-2.5 ${
+                  status === "완료"
+                    ? "cursor-pointer border-emerald-200/80 bg-emerald-50/30 hover:border-emerald-300 hover:bg-emerald-50/60"
+                    : "border-border/60 bg-background/50"
+                }`}
+                title={status === "완료" ? "눌러서 완료된 요청 업무 삭제" : undefined}
               >
                 <div className="flex items-start justify-between gap-2">
                   <p
@@ -60,11 +95,16 @@ export function RequestSentBoard({ requests }: { requests: SentRequest[] }) {
                   >
                     {task.title}
                   </p>
-                  <span
-                    className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium ${WORK_STATUS_STYLES[status]}`}
-                  >
-                    {status}
-                  </span>
+                  <div className="flex shrink-0 items-center gap-1">
+                    {recipientDeleted ? (
+                      <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-600">
+                        요청받은 직원이 삭제함
+                      </span>
+                    ) : null}
+                    <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${WORK_STATUS_STYLES[status]}`}>
+                      {deletingId === task.id ? "삭제 중" : status}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">

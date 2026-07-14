@@ -114,15 +114,17 @@ export function DeadlineTaskItem({
               className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
               onClick={async () => {
                 if (!confirm(`'${task.title}' 업무를 삭제할까요?`)) return;
-                const { error } = await supabase
-                  .from("work_status_tasks")
-                  .delete()
-                  .eq("id", task.id);
+                const now = new Date().toISOString();
+                const query = supabase.from("work_status_tasks");
+                const { error } = task.list_type === "instruction"
+                  ? await query.update({ recipient_deleted_at: now, archived_at: now }).eq("id", task.id)
+                  : await query.delete().eq("id", task.id);
                 if (error) {
                   toast.error("삭제에 실패했습니다.");
                   return;
                 }
                 onDeleted(task.id);
+                if (task.list_type === "instruction") toast.success("요청자 기록에는 '삭제됨'으로 남겨두었습니다.");
               }}
               aria-label="업무 삭제"
             >
