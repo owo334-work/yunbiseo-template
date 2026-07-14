@@ -56,17 +56,6 @@ const menuSections: MenuSection[] = [
         ),
       },
       {
-        label: "업무현황",
-        href: "/dashboard/work-status",
-        icon: (
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
-            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
-            <path d="m9 14 2 2 4-4" />
-          </svg>
-        ),
-      },
-      {
         label: "업무일지",
         href: "/dashboard/work-journal",
         icon: (
@@ -318,6 +307,21 @@ function SidebarNav({
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
+  const [journalEmployees, setJournalEmployees] = useState<Array<{ id: string; name: string }>>([]);
+
+  useEffect(() => {
+    const supabase = createClient();
+    let active = true;
+    void (async () => {
+      const { data: auth } = await supabase.auth.getUser();
+      if (!auth.user) return;
+      let query = supabase.from("employees").select("id, name, sort_order, is_active").eq("is_active", true);
+      if (!isAdmin) query = query.eq("auth_uid", auth.user.id);
+      const { data } = await query.order("sort_order", { ascending: true, nullsFirst: false }).order("name");
+      if (active) setJournalEmployees((data ?? []).map(({ id, name }) => ({ id, name })));
+    })();
+    return () => { active = false; };
+  }, [isAdmin]);
 
   return (
     <nav className="flex flex-1 flex-col overflow-y-auto px-3 pb-3">
@@ -333,13 +337,30 @@ function SidebarNav({
           ) : null}
           <div className="space-y-1">
             {section.items.map((item) => (
-              <NavItem
-                key={item.label}
-                item={item}
-                collapsed={collapsed}
-                onNavigate={onNavigate}
-                pathname={pathname}
-              />
+              <div key={item.label}>
+                <NavItem item={item} collapsed={collapsed} onNavigate={onNavigate} pathname={pathname} />
+                {item.href === "/dashboard/work-journal" && !collapsed && journalEmployees.length > 0 ? (
+                  <div className="ml-7 mt-1 space-y-0.5 border-l border-primary/15 pl-2">
+                    {journalEmployees.map((employee) => {
+                      const href = `/dashboard/work-journal/${employee.id}`;
+                      const active = pathname === href;
+                      return (
+                        <Link
+                          key={employee.id}
+                          href={href}
+                          onClick={onNavigate}
+                          className={cn(
+                            "block truncate rounded-lg px-2.5 py-1.5 text-xs transition-colors",
+                            active ? "bg-primary/12 font-semibold text-primary" : "text-muted-foreground hover:bg-white/70 hover:text-foreground"
+                          )}
+                        >
+                          {employee.name}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
             ))}
           </div>
         </div>

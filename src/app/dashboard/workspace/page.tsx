@@ -510,7 +510,7 @@ export default function WorkspacePage() {
                 return (
                   <Link
                     key={employee.id}
-                    href={`/dashboard/work-status/${employee.id}`}
+                    href={`/dashboard/work-journal/${employee.id}`}
                   >
                     <Card className="h-full cursor-pointer border-border/70 bg-card/85 transition-all hover:border-primary/30 hover:shadow-md">
                       <CardContent className="space-y-3 p-4">
@@ -520,7 +520,7 @@ export default function WorkspacePage() {
                           </div>
                           <div className="min-w-0">
                             <p className="truncate text-sm font-semibold text-foreground">
-                              {employee.name}의 업무현황
+                              {employee.name}의 업무일지
                             </p>
                             <p className="truncate text-xs text-muted-foreground">
                               {[employee.department, employee.position]

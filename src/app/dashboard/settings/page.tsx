@@ -1271,7 +1271,7 @@ export default function SettingsPage() {
 
       <PageSection
         title="요청사항 배정 권한"
-        description="업무현황에서 '요청사항'을 다른 직원에게 배정할 수 있는 최소 직책을 정합니다. 관리자는 직책과 무관하게 항상 배정할 수 있습니다."
+        description="업무일지에서 '요청사항'을 다른 직원에게 배정할 수 있는 최소 직책을 정합니다. 관리자는 직책과 무관하게 항상 배정할 수 있습니다."
       >
         <SectionCard>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">

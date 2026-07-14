@@ -111,6 +111,7 @@ const NOTE_MIN_HEIGHT = 120;
 const NOTE_MAX_SIZE = 2400;
 const NOTE_IMAGE_BUCKET = "work-journal-images";
 const MAX_NOTE_IMAGE_BYTES = 10 * 1024 * 1024;
+const NO_AUTH_UID = "00000000-0000-0000-0000-000000000000";
 // useDefaultLayout의 기본 저장소는 서버 렌더링 중에도 localStorage를 참조한다.
 // 서버에서는 빈 값으로 응답하고, 브라우저에서만 실제 크기를 저장·복원한다.
 const PANEL_LAYOUT_STORAGE = {
@@ -318,7 +319,7 @@ function MiniCalendar({ month, selected, onMonthChange, onSelect }: {
   );
 }
 
-export function WorkJournal() {
+export function WorkJournal({ targetEmployeeId }: { targetEmployeeId?: string }) {
   const supabase = useMemo(() => createClient(), []);
   const boardRef = useRef<HTMLDivElement>(null);
   const entryIdsRef = useRef(new Map<string, string>());
@@ -327,7 +328,9 @@ export function WorkJournal() {
   const selectedEditorRef = useRef<HTMLDivElement | null>(null);
   const selectedDateRef = useRef<string | null>(null);
   const [employeeId, setEmployeeId] = useState<string | null>(null);
-  const [authUid, setAuthUid] = useState<string | null>(null);
+  const [employeeName, setEmployeeName] = useState<string | null>(null);
+  const [actorAuthUid, setActorAuthUid] = useState<string | null>(null);
+  const [ownerAuthUid, setOwnerAuthUid] = useState<string | null>(null);
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
   const [entries, setEntries] = useState<JournalEntry[]>([]);
@@ -362,14 +365,38 @@ export function WorkJournal() {
     void (async () => {
       const { data: auth } = await supabase.auth.getUser();
       if (!auth.user) return;
-      setAuthUid(auth.user.id);
-      const { data, error } = await supabase.from("employees").select("id").eq("auth_uid", auth.user.id).single();
+      setActorAuthUid(auth.user.id);
+      const { data: current, error } = await supabase.from("employees").select("id, name, employee_type, auth_uid").eq("auth_uid", auth.user.id).single();
       if (!active) return;
-      if (error || !data) toast.error("직원 정보를 확인할 수 없습니다.");
-      else setEmployeeId(data.id);
+      if (error || !current) {
+        toast.error("직원 정보를 확인할 수 없습니다.");
+        return;
+      }
+      if (!targetEmployeeId || targetEmployeeId === current.id) {
+        setEmployeeId(current.id);
+        setEmployeeName(current.name);
+        setOwnerAuthUid(current.auth_uid ?? NO_AUTH_UID);
+        return;
+      }
+      if (current.employee_type !== "관리자") {
+        toast.error("다른 직원의 업무일지는 관리자만 확인할 수 있습니다.");
+        setEmployeeId(current.id);
+        setEmployeeName(current.name);
+        setOwnerAuthUid(current.auth_uid ?? NO_AUTH_UID);
+        return;
+      }
+      const { data: target } = await supabase.from("employees").select("id, name, auth_uid").eq("id", targetEmployeeId).maybeSingle();
+      if (!active) return;
+      if (!target) {
+        toast.error("선택한 직원을 찾을 수 없습니다.");
+        return;
+      }
+      setEmployeeId(target.id);
+      setEmployeeName(target.name);
+      setOwnerAuthUid(target.auth_uid ?? NO_AUTH_UID);
     })();
     return () => { active = false; };
-  }, [supabase]);
+  }, [supabase, targetEmployeeId]);
 
   // 드래그가 에디터 밖에서 끝나도 선택 영역을 붙잡아 둔다. 선택이 풀리면 서식 팝업도 닫는다.
   useEffect(() => {
@@ -430,10 +457,10 @@ export function WorkJournal() {
   }, [employeeId, supabase]);
 
   const loadWorkTasks = useCallback(async () => {
-    if (!employeeId || !authUid) return;
+    if (!employeeId || !ownerAuthUid) return;
     const [receivedResult, sentResult] = await Promise.all([
       supabase.from("work_status_tasks").select("*").eq("employee_id", employeeId).is("archived_at", null).order("sort_order").order("created_at"),
-      supabase.from("work_status_tasks").select("*, employee:employees!work_status_tasks_employee_id_fkey(id, name, department)").eq("created_by", authUid).eq("list_type", "instruction").is("archived_at", null).order("created_at", { ascending: false }),
+      supabase.from("work_status_tasks").select("*, employee:employees!work_status_tasks_employee_id_fkey(id, name, department)").eq("created_by", ownerAuthUid).eq("list_type", "instruction").is("archived_at", null).order("created_at", { ascending: false }),
     ]);
     if (receivedResult.error || sentResult.error) {
       toast.error("업무 위젯을 불러오지 못했습니다.");
@@ -441,7 +468,7 @@ export function WorkJournal() {
     }
     setWorkTasks((receivedResult.data ?? []) as WorkStatusTask[]);
     setSentRequests((sentResult.data ?? []) as SentRequest[]);
-  }, [authUid, employeeId, supabase]);
+  }, [employeeId, ownerAuthUid, supabase]);
 
   // 주를 옮기면 업무일지만 다시 읽는다. 메모보드까지 같이 불러오면 옮겨둔 메모지가 매번 다시 그려진다.
   useEffect(() => {
@@ -462,11 +489,11 @@ export function WorkJournal() {
   }, [employeeId, loadBoardImages, loadNotes]);
 
   useEffect(() => {
-    if (!employeeId || !authUid) return;
+    if (!employeeId || !ownerAuthUid) return;
     let active = true;
     queueMicrotask(() => { if (active) void loadWorkTasks(); });
     return () => { active = false; };
-  }, [authUid, employeeId, loadWorkTasks]);
+  }, [employeeId, loadWorkTasks, ownerAuthUid]);
 
   const saveDay = async (key: string, content: string) => {
     if (!employeeId) return false;
@@ -503,7 +530,7 @@ export function WorkJournal() {
   };
 
   const addRoutine = async (listType: WorkListType) => {
-    if (!employeeId || !authUid) return;
+    if (!employeeId || !actorAuthUid) return;
     const title = (routineInput[listType] ?? "").trim();
     if (!title) return;
     const { data, error } = await supabase.from("work_status_tasks").insert({
@@ -515,7 +542,7 @@ export function WorkJournal() {
       progress: 0,
       due_date: null,
       sort_order: 0,
-      created_by: authUid,
+      created_by: actorAuthUid,
     }).select("*").single();
     if (error) toast.error("고정업무를 추가하지 못했습니다.");
     else {
@@ -709,6 +736,7 @@ export function WorkJournal() {
     setUploadingBoardImage(true);
     const form = new FormData();
     form.append("file", file);
+    if (employeeId) form.append("employee_id", employeeId);
     try {
       const response = await fetch("/api/work-journal/images", { method: "POST", body: form });
       const result = await response.json();
@@ -930,7 +958,9 @@ export function WorkJournal() {
       <header className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">Weekly work journal</p>
-          <h1 className="page-title-gradient text-xl font-semibold tracking-tight">업무일지</h1>
+          <h1 className="page-title-gradient text-xl font-semibold tracking-tight">
+            {employeeName ? `${employeeName} 업무일지` : "업무일지"}
+          </h1>
           <p className="text-xs text-muted-foreground">기록할 글자를 선택하면 서식을 바꾸거나 일정으로 등록할 수 있습니다.</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => { const today = new Date(); goToWeek(today); setCalendarMonth(startOfMonth(today)); }}><RotateCcw className="mr-1.5 h-4 w-4" />이번 주</Button>
