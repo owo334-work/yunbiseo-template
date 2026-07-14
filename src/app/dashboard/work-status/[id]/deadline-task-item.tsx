@@ -86,7 +86,7 @@ export function DeadlineTaskItem({
 
   return (
     <Card className="rounded-lg border-border/70 bg-card/85">
-      <CardContent className="space-y-1 p-2">
+      <CardContent className="space-y-0.5 px-2 py-1.5">
         <div className="flex items-start justify-between gap-2">
           <button
             type="button"
@@ -134,7 +134,7 @@ export function DeadlineTaskItem({
         {collapsed ? null : (
           <>
         {/* 마감일 · 진척도 · 상태를 한 줄에 배치해 카드 높이를 줄인다. */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
           <div className="flex min-w-0 items-center gap-2">
             {task.due_date ? (
               <span className={isOverdue ? "font-medium text-rose-600" : "text-muted-foreground"}>
@@ -196,7 +196,7 @@ export function DeadlineTaskItem({
             }}
             placeholder="메모 (업무 관련 메모를 적어두세요)"
             rows={1}
-            className="min-h-7 w-full resize-y rounded-md border border-border/70 bg-background/80 px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+            className="min-h-6 w-full resize-y rounded-md border border-border/70 bg-background/80 px-2 py-0.5 text-xs leading-5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
           />
         ) : memo ? (
           <p className="whitespace-pre-wrap rounded-lg bg-muted/50 px-2.5 py-1.5 text-xs text-muted-foreground">
