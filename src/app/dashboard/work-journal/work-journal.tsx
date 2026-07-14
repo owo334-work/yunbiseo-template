@@ -1057,7 +1057,7 @@ export function WorkJournal({ targetEmployeeId }: { targetEmployeeId?: string })
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-auto overscroll-contain">
-          <div ref={boardRef} tabIndex={0} onPaste={(event) => void handleBoardPaste(event)} className="relative min-h-[1400px] min-w-[1600px] bg-[radial-gradient(circle_at_1px_1px,rgba(100,116,139,0.16)_1px,transparent_0)] [background-size:22px_22px] outline-none">
+          <div ref={boardRef} tabIndex={0} onPaste={(event) => void handleBoardPaste(event)} className="relative h-full min-h-[1400px] w-full min-w-[1600px] bg-[radial-gradient(circle_at_1px_1px,rgba(100,116,139,0.16)_1px,transparent_0)] [background-size:22px_22px] outline-none">
             {visibleNotes.length === 0 && boardImages.length === 0 ? <button type="button" onClick={() => void addBoardNote()} className="absolute left-8 top-8 flex h-32 w-64 flex-col items-center justify-center rounded-2xl border border-dashed border-border text-sm text-muted-foreground hover:border-primary/50 hover:bg-primary/5"><Plus className="mb-2 h-6 w-6" />{showArchive ? "보관한 메모가 없습니다" : "메모지를 만들거나 이미지를 붙여보세요"}</button> : null}
             {!showArchive ? boardImages.map((image) => (
               <article key={image.id} className="absolute flex flex-col overflow-hidden rounded-md bg-white shadow-[0_3px_9px_rgba(15,23,42,0.16)] ring-1 ring-black/10" style={{ left: image.position_x, top: image.position_y, width: image.width, height: image.height, zIndex: Math.max(1, image.z_index) }}>
