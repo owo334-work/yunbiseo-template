@@ -117,8 +117,8 @@ const NOTE_MAX_SIZE = 2400;
 const NOTE_IMAGE_BUCKET = "work-journal-images";
 const MAX_NOTE_IMAGE_BYTES = 10 * 1024 * 1024;
 const NO_AUTH_UID = "00000000-0000-0000-0000-000000000000";
-const MAIN_PANEL_LAYOUT_KEY = "work-journal-main-panels-v3";
-const WEEKLY_PANEL_LAYOUT_KEY = "work-journal-weekly-panels-v3";
+const MAIN_PANEL_LAYOUT_KEY = "work-journal-main-panels-v4";
+const WEEKLY_PANEL_LAYOUT_KEY = "work-journal-weekly-panels-v4";
 const ROUTINE_LISTS: Array<{ key: WorkListType; label: string }> = [
   { key: "daily", label: "일간" },
   { key: "weekly", label: "주간" },
