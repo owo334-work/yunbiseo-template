@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { CalendarClock, Cake, Palmtree } from "lucide-react";
 
 import {
@@ -29,7 +30,8 @@ export function DayDetailDialog({
   works,
   employeeNameById,
   categories,
-  onOpenSchedules,
+  onRegisterSchedule,
+  onOpenSchedule,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -39,7 +41,8 @@ export function DayDetailDialog({
   works: Schedule[];
   employeeNameById: Map<string, string>;
   categories: CategoryLookup;
-  onOpenSchedules: () => void;
+  onRegisterSchedule: () => void;
+  onOpenSchedule: (schedule: Schedule) => void;
 }) {
   const nothing = birthdays.length === 0 && leaves.length === 0 && works.length === 0;
 
@@ -89,10 +92,12 @@ export function DayDetailDialog({
                 const info = catInfo(categories, s.category);
                 const who = employeeNameById.get(s.created_by);
                 return (
-                  <div
+                  <button
+                    type="button"
                     key={s.id}
-                    className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"
+                    className="flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors hover:bg-muted/50"
                     style={{ borderColor: `${info.color}55`, backgroundColor: `${info.color}12` }}
+                    onClick={() => onOpenSchedule(s)}
                   >
                     <span
                       className="inline-flex shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium"
@@ -104,7 +109,7 @@ export function DayDetailDialog({
                     {who ? (
                       <span className="ml-auto shrink-0 text-xs text-muted-foreground">{who}</span>
                     ) : null}
-                  </div>
+                  </button>
                 );
               })}
             </section>
@@ -121,9 +126,11 @@ export function DayDetailDialog({
                 const who = employeeNameById.get(s.created_by);
                 const time = s.all_day ? "종일" : format(parseISO(s.start_at), "HH:mm");
                 return (
-                  <div
+                  <button
+                    type="button"
                     key={s.id}
-                    className="flex items-center gap-2 rounded-lg border border-border/70 bg-card/70 px-3 py-2 text-sm"
+                    className="flex w-full items-center gap-2 rounded-lg border border-border/70 bg-card/70 px-3 py-2 text-left text-sm transition-colors hover:bg-muted/50"
+                    onClick={() => onOpenSchedule(s)}
                   >
                     <span
                       className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
@@ -134,20 +141,25 @@ export function DayDetailDialog({
                     {who ? (
                       <span className="ml-auto shrink-0 text-xs text-muted-foreground">{who}</span>
                     ) : null}
-                  </div>
+                  </button>
                 );
               })}
             </section>
           ) : null}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="sm:justify-between">
+          <Button type="button" variant="ghost" asChild>
+            <Link href="/dashboard/schedules">전체 일정 보기</Link>
+          </Button>
+          <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             닫기
           </Button>
-          <Button type="button" onClick={onOpenSchedules}>
-            일정관리 열기
+          <Button type="button" onClick={onRegisterSchedule}>
+            + 일정 등록
           </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

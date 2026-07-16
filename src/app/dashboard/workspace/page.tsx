@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   CalendarDays,
   ChevronDown,
@@ -10,6 +9,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import {
   EmptyState,
@@ -41,11 +41,19 @@ import {
 } from "@/components/calendar/calendar-utils";
 import { DayDetailDialog } from "./day-detail-dialog";
 import { SharePanel } from "./share-panel";
+import { ScheduleDialog } from "@/components/schedule-dialog";
 import { createClient } from "@/lib/supabase/client";
+import { sendLog } from "@/lib/log-client";
 import type {
+  Customer,
   Employee,
+  Lead,
+  Project,
+  RecurrenceType,
   Schedule,
   ScheduleCategoryItem,
+  ScheduleInsert,
+  ScheduleRecurrenceActionScope,
   WorkListType,
   WorkStatusTask,
   WorkStatusValue,
@@ -100,15 +108,23 @@ type EmployeeWithTasks = Employee & {
 
 export default function WorkspacePage() {
   const supabase = useMemo(() => createClient(), []);
-  const router = useRouter();
 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [tasks, setTasks] = useState<WorkStatusTask[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [deptColors, setDeptColors] = useState<DepartmentColorMap>({});
   const [categories, setCategories] = useState<ScheduleCategoryItem[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [currentEmployeeId, setCurrentEmployeeId] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [dayDialogOpen, setDayDialogOpen] = useState(false);
+  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null);
+  const [defaultStart, setDefaultStart] = useState<string | undefined>();
+  const [defaultEnd, setDefaultEnd] = useState<string | undefined>();
+  const [scheduleOptionsLoaded, setScheduleOptionsLoaded] = useState(false);
   const [calMonth, setCalMonth] = useState<Date>(() =>
     startOfMonth(new Date()),
   );
@@ -190,6 +206,41 @@ export default function WorkspacePage() {
     }
 
     setLoading(false);
+  }, [supabase]);
+
+  useEffect(() => {
+    if (!employees.length) return;
+    void supabase.auth.getUser().then(({ data }) => {
+      const employee = employees.find((item) => item.auth_uid === data.user?.id);
+      setCurrentEmployeeId(employee?.id ?? null);
+    });
+  }, [employees, supabase]);
+
+  useEffect(() => {
+    if (!scheduleDialogOpen || scheduleOptionsLoaded) return;
+    void (async () => {
+      const [projectRes, customerRes, leadRes] = await Promise.all([
+        supabase.from("projects").select("id, project_number, name, client").order("name").limit(500),
+        supabase.from("customers").select("id, name, business_number").order("name").limit(500),
+        supabase.from("leads").select("id, company_name, contact_name").order("company_name").limit(500),
+      ]);
+      setProjects((projectRes.data ?? []) as Project[]);
+      setCustomers((customerRes.data ?? []) as Customer[]);
+      setLeads((leadRes.data ?? []) as Lead[]);
+      setScheduleOptionsLoaded(true);
+    })();
+  }, [scheduleDialogOpen, scheduleOptionsLoaded, supabase]);
+
+  const refreshSchedules = useCallback(async () => {
+    const { data, error: scheduleError } = await supabase
+      .from("schedules")
+      .select("*")
+      .limit(5000);
+    if (scheduleError) {
+      toast.error("일정 목록을 새로 불러오지 못했습니다.");
+      return;
+    }
+    setSchedules((data ?? []) as Schedule[]);
   }, [supabase]);
 
   useEffect(() => {
@@ -351,6 +402,105 @@ export default function WorkspacePage() {
       );
     });
   }, [selectedKey, workSchedules]);
+
+  const openScheduleRegistration = () => {
+    if (!selectedDate) return;
+    const start = new Date(selectedDate);
+    start.setHours(9, 0, 0, 0);
+    const end = new Date(selectedDate);
+    end.setHours(10, 0, 0, 0);
+    setEditingSchedule(null);
+    setDefaultStart(start.toISOString());
+    setDefaultEnd(end.toISOString());
+    setDayDialogOpen(false);
+    setScheduleDialogOpen(true);
+  };
+
+  const openScheduleDetail = async (schedule: Schedule) => {
+    const { data, error: scheduleError } = await supabase
+      .from("schedules")
+      .select(
+        "*, attendees:schedule_attendees(employee_id, employees(id, name, department)), projects(id, project_number, name), customers(id, name), leads(id, company_name)",
+      )
+      .eq("id", schedule.id)
+      .single();
+    if (scheduleError || !data) {
+      toast.error("일정을 불러오지 못했습니다.");
+      return;
+    }
+    setEditingSchedule(data as Schedule);
+    setDefaultStart(undefined);
+    setDefaultEnd(undefined);
+    setDayDialogOpen(false);
+    setScheduleDialogOpen(true);
+  };
+
+  const saveSchedule = async (
+    data: ScheduleInsert,
+    attendeeIds: string[],
+    recurrence?: { type: RecurrenceType; endDate: string | null },
+    options?: { addGoogleMeet?: boolean },
+    scope?: ScheduleRecurrenceActionScope,
+  ) => {
+    const response = await fetch("/api/schedules/mutate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        editingSchedule
+          ? {
+              action: "update",
+              scheduleId: editingSchedule.id,
+              schedule: data,
+              attendeeIds,
+              scope,
+            }
+          : {
+              action: "create",
+              schedule: data,
+              attendeeIds,
+              recurrence,
+              addGoogleMeet: options?.addGoogleMeet,
+            },
+      ),
+    });
+    const result = await response.json().catch(() => null);
+    if (!response.ok) {
+      toast.error(editingSchedule ? "일정 수정에 실패했습니다." : "일정 등록에 실패했습니다.");
+      return false;
+    }
+    if (result?.warning) toast.warning(result.warning);
+    sendLog(
+      editingSchedule ? "UPDATE_SCHEDULE" : "CREATE_SCHEDULE",
+      `${editingSchedule ? "일정 수정" : "일정 등록"}: ${data.title}`,
+      {
+        resource: "schedule",
+        resource_id: editingSchedule?.id ?? String(result?.id ?? result?.ids?.[0] ?? ""),
+      },
+    );
+    await refreshSchedules();
+    return true;
+  };
+
+  const deleteSchedule = async (
+    scheduleId: string,
+    scope?: ScheduleRecurrenceActionScope,
+  ) => {
+    const response = await fetch("/api/schedules/mutate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete", scheduleId, scope }),
+    });
+    if (!response.ok) {
+      toast.error("일정 삭제에 실패했습니다.");
+      return false;
+    }
+    sendLog("DELETE_SCHEDULE", `일정 삭제: ${editingSchedule?.title ?? ""}`, {
+      resource: "schedule",
+      resource_id: scheduleId,
+    });
+    await refreshSchedules();
+    return true;
+  };
 
   const keyword = search.trim();
   const filtered = employeesWithTasks.filter((employee) => {
@@ -631,7 +781,24 @@ export default function WorkspacePage() {
         works={selectedWorks}
         employeeNameById={employeeNameById}
         categories={catList}
-        onOpenSchedules={() => router.push("/dashboard/schedules")}
+        onRegisterSchedule={openScheduleRegistration}
+        onOpenSchedule={(schedule) => void openScheduleDetail(schedule)}
+      />
+      <ScheduleDialog
+        open={scheduleDialogOpen}
+        onOpenChange={setScheduleDialogOpen}
+        schedule={editingSchedule}
+        employees={employees}
+        projects={projects}
+        customers={customers}
+        leads={leads}
+        categories={categories}
+        currentEmployeeId={currentEmployeeId}
+        defaultStart={defaultStart}
+        defaultEnd={defaultEnd}
+        defaultAllDay={false}
+        onSave={saveSchedule}
+        onDelete={deleteSchedule}
       />
     </PageShell>
   );
