@@ -25,6 +25,7 @@ import {
   ChevronRight,
   GripHorizontal,
   Maximize2,
+  Megaphone,
   MoveDown,
   MoveUp,
   Palette,
@@ -42,11 +43,14 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DeadlineTaskItem } from "@/app/dashboard/work-status/[id]/deadline-task-item";
+import { RequestAssignPanel } from "@/app/dashboard/work-status/[id]/request-assign-panel";
 import { RequestSentBoard, type SentRequest } from "@/app/dashboard/work-status/[id]/request-sent-board";
 import { isRoutineChecked, routinePeriodKey } from "@/lib/routine-period";
 import { createClient } from "@/lib/supabase/client";
 import type { WorkListType, WorkStatusTask, WorkStatusValue } from "@/lib/types";
+import { canAssignRequestByPosition, DEFAULT_REQUEST_MIN_POSITION, REQUEST_MIN_POSITION_KEY } from "@/lib/work-status";
 import { cn } from "@/lib/utils";
 
 type JournalEntry = {
@@ -327,6 +331,11 @@ export function WorkJournal({ targetEmployeeId }: { targetEmployeeId?: string })
   const [employeeName, setEmployeeName] = useState<string | null>(null);
   const [actorAuthUid, setActorAuthUid] = useState<string | null>(null);
   const [ownerAuthUid, setOwnerAuthUid] = useState<string | null>(null);
+  const [requestDialogOpen, setRequestDialogOpen] = useState(false);
+  const [requestEmployees, setRequestEmployees] = useState<Array<{ id: string; name: string; department: string | null }>>([]);
+  const [requestDepartment, setRequestDepartment] = useState<string | null>(null);
+  const [requestMinPosition, setRequestMinPosition] = useState(DEFAULT_REQUEST_MIN_POSITION);
+  const [canAssignRequests, setCanAssignRequests] = useState(false);
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [calendarMonth, setCalendarMonth] = useState(() => startOfMonth(new Date()));
   const [entries, setEntries] = useState<JournalEntry[]>([]);
@@ -374,11 +383,21 @@ export function WorkJournal({ targetEmployeeId }: { targetEmployeeId?: string })
       const { data: auth } = await supabase.auth.getUser();
       if (!auth.user) return;
       setActorAuthUid(auth.user.id);
-      const { data: current, error } = await supabase.from("employees").select("id, name, employee_type, auth_uid").eq("auth_uid", auth.user.id).single();
+      const { data: current, error } = await supabase.from("employees").select("id, name, employee_type, auth_uid, department, position").eq("auth_uid", auth.user.id).single();
       if (!active) return;
       if (error || !current) {
         toast.error("직원 정보를 확인할 수 없습니다.");
         return;
+      }
+      setRequestDepartment(current.department);
+      const { data: setting } = await supabase.from("system_settings").select("value").eq("key", REQUEST_MIN_POSITION_KEY).maybeSingle();
+      const minPosition = setting?.value || DEFAULT_REQUEST_MIN_POSITION;
+      const allowed = current.employee_type === "관리자" || canAssignRequestByPosition(current.position, minPosition);
+      setRequestMinPosition(minPosition);
+      setCanAssignRequests(allowed);
+      if (allowed) {
+        const { data: employees } = await supabase.from("employees").select("id, name, department, is_active").order("name");
+        if (active) setRequestEmployees((employees ?? []).filter((employee) => employee.is_active !== false).map(({ id, name, department }) => ({ id, name, department })));
       }
       if (!targetEmployeeId || targetEmployeeId === current.id) {
         setEmployeeId(current.id);
@@ -468,7 +487,7 @@ export function WorkJournal({ targetEmployeeId }: { targetEmployeeId?: string })
     if (!employeeId || !ownerAuthUid) return;
     const [receivedResult, sentResult] = await Promise.all([
       supabase.from("work_status_tasks").select("*").eq("employee_id", employeeId).is("archived_at", null).is("recipient_deleted_at", null).order("sort_order").order("created_at"),
-      supabase.from("work_status_tasks").select("*, employee:employees!work_status_tasks_employee_id_fkey(id, name, department)").eq("created_by", ownerAuthUid).eq("list_type", "instruction").is("requester_hidden_at", null).order("created_at", { ascending: false }),
+      supabase.from("work_status_tasks").select("*, employee:employees!work_status_tasks_employee_id_fkey(id, name, department)").eq("created_by", ownerAuthUid).eq("list_type", "instruction").neq("employee_id", employeeId).is("requester_hidden_at", null).order("created_at", { ascending: false }),
     ]);
     if (receivedResult.error || sentResult.error) {
       toast.error("업무 위젯을 불러오지 못했습니다.");
@@ -966,9 +985,16 @@ export function WorkJournal({ targetEmployeeId }: { targetEmployeeId?: string })
       <header className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">Weekly work journal</p>
-          <h1 className="page-title-gradient text-xl font-semibold tracking-tight">
-            {employeeName ? `${employeeName} 업무일지` : "업무일지"}
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="page-title-gradient text-xl font-semibold tracking-tight">
+              {employeeName ? `${employeeName} 업무일지` : "업무일지"}
+            </h1>
+            {canAssignRequests ? (
+              <Button variant="outline" size="xs" onClick={() => setRequestDialogOpen(true)}>
+                <Megaphone className="h-3.5 w-3.5" />업무요청
+              </Button>
+            ) : null}
+          </div>
           <p className="text-xs text-muted-foreground">기록할 글자를 선택하면 서식을 바꾸거나 일정으로 등록할 수 있습니다.</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => { const today = new Date(); goToWeek(today); setCalendarMonth(startOfMonth(today)); }}><RotateCcw className="mr-1.5 h-4 w-4" />이번 주</Button>
@@ -1122,6 +1148,25 @@ export function WorkJournal({ targetEmployeeId }: { targetEmployeeId?: string })
         </div>
         </ResizablePanel>
       </ResizablePanelGroup>
+
+      <Dialog open={requestDialogOpen} onOpenChange={setRequestDialogOpen}>
+        <DialogContent className="max-w-3xl p-3 sm:max-w-3xl">
+          <DialogHeader className="sr-only">
+            <DialogTitle>업무요청 보내기</DialogTitle>
+            <DialogDescription>요청받을 직원과 업무내용, 마감일을 선택합니다.</DialogDescription>
+          </DialogHeader>
+          <RequestAssignPanel
+            employees={requestEmployees}
+            currentDepartment={requestDepartment}
+            minPosition={requestMinPosition}
+            authUid={actorAuthUid}
+            onAssigned={() => {
+              setRequestDialogOpen(false);
+              void loadWorkTasks();
+            }}
+          />
+        </DialogContent>
+      </Dialog>
 
       {/* mousedown 을 막아야 팝업을 눌러도 드래그해 둔 선택 영역이 풀리지 않는다. */}
       {bubble && !schedulePrompt ? (
