@@ -511,18 +511,19 @@ export default function WorkspacePage() {
                   <Link
                     key={employee.id}
                     href={`/dashboard/work-journal/${employee.id}`}
+                    className="min-w-0 overflow-hidden"
                   >
-                    <Card className="h-full cursor-pointer border-border/70 bg-card/85 transition-all hover:border-primary/30 hover:shadow-md">
-                      <CardContent className="space-y-3 p-4">
-                        <div className="flex items-center gap-3">
+                    <Card className="h-full min-w-0 overflow-hidden cursor-pointer border-border/70 bg-card/85 transition-all hover:border-primary/30 hover:shadow-md">
+                      <CardContent className="min-w-0 space-y-3 overflow-hidden p-4">
+                        <div className="flex min-w-0 items-center gap-3">
                           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
                             {employee.name.charAt(0)}
                           </div>
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-foreground">
+                          <div className="min-w-0 flex-1 overflow-hidden">
+                            <p className="block max-w-full truncate text-sm font-semibold text-foreground">
                               {employee.name}의 업무일지
                             </p>
-                            <p className="truncate text-xs text-muted-foreground">
+                            <p className="block max-w-full truncate text-xs text-muted-foreground">
                               {[employee.department, employee.position]
                                 .filter(Boolean)
                                 .join(" · ") || "부서 미지정"}
@@ -543,7 +544,7 @@ export default function WorkspacePage() {
                           )}
                         </div>
 
-                        <div className="space-y-2 border-t border-border/60 pt-3">
+                        <div className="min-w-0 space-y-2 overflow-hidden border-t border-border/60 pt-3">
                           {preview.length === 0 ? (
                             <p className="text-xs text-muted-foreground">
                               {employee.total === 0
@@ -557,7 +558,7 @@ export default function WorkspacePage() {
                                 return (
                                   <div
                                     key={task.id}
-                                    className="flex items-center gap-2"
+                                    className="flex min-w-0 items-center gap-2 overflow-hidden"
                                   >
                                     <span
                                       className={`inline-flex shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${WORK_STATUS_STYLES[task.status]}`}

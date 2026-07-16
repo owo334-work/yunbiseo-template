@@ -72,9 +72,9 @@ export function DeadlineTaskItem({
   };
 
   const saveProgress = async (value: number) => {
-    // 진척도 100% 면 자동 완료, 그 외엔 상태 유지(단 완료였다면 진행중으로)
+    // 진척도에 맞춰 상태를 자동으로 동기화한다.
     const nextStatus: WorkStatusValue =
-      value >= 100 ? "완료" : status === "완료" ? "진행중" : status;
+      value >= 100 ? "완료" : value <= 0 ? "미진행" : "진행중";
     const ok = await persist({ progress: value, status: nextStatus });
     if (ok) setStatus(nextStatus);
   };
