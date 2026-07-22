@@ -35,8 +35,8 @@ export default function OtpPage() {
   const [search, setSearch] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
+  const fetchData = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     setError(false);
     const { data, error: err } = await supabase
       .from("otp_messages")
@@ -48,13 +48,46 @@ export default function OtpPage() {
     } else {
       setMessages((data ?? []) as OtpMessage[]);
     }
-    setLoading(false);
+    if (showLoading) setLoading(false);
   }, [supabase]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel("otp-messages-realtime")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "otp_messages" },
+        (payload) => {
+          const incoming = payload.new as OtpMessage;
+          if (!incoming.id) return;
+          setMessages((current) => [
+            incoming,
+            ...current.filter((message) => message.id !== incoming.id),
+          ]);
+          toast.success("새 인증번호가 도착했습니다.");
+        },
+      )
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") void fetchData(false);
+      });
+
+    const syncWhenVisible = () => {
+      if (document.visibilityState === "visible") void fetchData(false);
+    };
+    window.addEventListener("focus", syncWhenVisible);
+    document.addEventListener("visibilitychange", syncWhenVisible);
+
+    return () => {
+      window.removeEventListener("focus", syncWhenVisible);
+      document.removeEventListener("visibilitychange", syncWhenVisible);
+      void supabase.removeChannel(channel);
+    };
+  }, [fetchData, supabase]);
 
   const copyCode = useCallback(async (msg: OtpMessage) => {
     try {
