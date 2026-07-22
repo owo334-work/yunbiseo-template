@@ -18,7 +18,15 @@ export async function GET(request: NextRequest) {
 
 async function handle(request: NextRequest) {
   try {
-    if (!(await validateApiKey(request))) {
+    const authorization = request.headers.get("authorization");
+    const cronSecret = process.env.CRON_SECRET;
+    const isVercelCron = Boolean(
+      cronSecret && authorization === `Bearer ${cronSecret}`,
+    );
+
+    // Vercel Cron은 CRON_SECRET을 Bearer 토큰으로 전송한다.
+    // 외부에서 수동 실행할 때는 기존 윤비서 API 키도 계속 허용한다.
+    if (!isVercelCron && !(await validateApiKey(request))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
