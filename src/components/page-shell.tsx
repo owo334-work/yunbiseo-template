@@ -113,7 +113,7 @@ export function PageHeader({
           ) : null}
 
           <div className="flex flex-wrap items-center gap-1.5">
-            <h3 className="text-xl font-semibold tracking-tight text-foreground md:text-[1.65rem]">
+            <h3 className="text-xl font-semibold tracking-tight text-[var(--heading-foreground)] md:text-[1.65rem]">
               {title}
             </h3>
             {titleAccessory}
@@ -302,7 +302,7 @@ export function SectionIntro({
       )}
     >
       <div className="space-y-1">
-        <h2 className="text-lg font-semibold tracking-tight text-foreground">{title}</h2>
+        <h2 className="text-lg font-semibold tracking-tight text-[var(--heading-foreground)]">{title}</h2>
         {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
       </div>
       {action}

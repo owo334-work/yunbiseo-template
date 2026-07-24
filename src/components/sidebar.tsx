@@ -244,7 +244,7 @@ function Brand({ collapsed = false }: { collapsed?: boolean }) {
       </div>
       {!collapsed ? (
         <div className="min-w-0">
-          <span className="block truncate text-sm font-semibold text-foreground">윤비서</span>
+          <span className="block truncate text-sm font-semibold text-[var(--heading-foreground)]">윤비서</span>
         </div>
       ) : null}
     </Link>
@@ -274,8 +274,8 @@ function NavItem({
       className={cn(
         "group flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition-all",
         isActive
-          ? "border-primary/10 bg-[var(--section-accent)] font-semibold text-primary"
-          : "border-transparent text-muted-foreground hover:border-primary/10 hover:bg-[#f2f7f5] hover:text-foreground",
+          ? "border-primary bg-primary font-semibold text-primary-foreground shadow-sm"
+          : "border-transparent text-sidebar-foreground hover:border-primary/10 hover:bg-[#f2f7f5] hover:text-sidebar-foreground",
         collapsed && "justify-center px-0"
       )}
     >
@@ -355,7 +355,7 @@ function SidebarNav({
                           onClick={onNavigate}
                           className={cn(
                             "block truncate rounded-lg px-2.5 py-1.5 text-xs transition-colors",
-                            active ? "bg-primary/12 font-semibold text-primary" : "text-muted-foreground hover:bg-white/70 hover:text-foreground"
+                            active ? "bg-primary font-semibold text-primary-foreground" : "text-sidebar-foreground hover:bg-white/70 hover:text-sidebar-foreground"
                           )}
                         >
                           {employee.name}

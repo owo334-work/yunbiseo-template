@@ -1278,7 +1278,9 @@ export default function SettingsPage() {
               ["sectionAccent", "제목 배경색", "섹션 제목과 선택 메뉴에 사용합니다."],
               ["background", "전체 배경색", "윤비서 작업 화면의 배경입니다."],
               ["sidebar", "사이드바 색상", "왼쪽 메뉴 영역의 배경입니다."],
-              ["text", "기본 글자색", "제목과 본문 등 화면의 기본 글자색입니다."],
+              ["text", "기본 글자색", "본문과 일반 정보에 사용하는 글자색입니다."],
+              ["headingText", "제목 글자색", "페이지 제목과 굵은 제목에 사용하는 글자색입니다."],
+              ["sidebarText", "사이드 메뉴 글자색", "선택되지 않은 사이드 메뉴의 글자색입니다."],
             ] as const).map(([key, label, description]) => (
               <div key={key} className="rounded-xl border border-border/80 bg-card p-4">
                 <Label htmlFor={`theme-${key}`} className="text-sm font-semibold">
@@ -1310,14 +1312,14 @@ export default function SettingsPage() {
           >
             <div className="grid min-h-40 grid-cols-[150px_1fr]">
               <div className="border-r border-border/70 p-3" style={{ backgroundColor: uiTheme.sidebar }}>
-                <p className="text-sm font-semibold" style={{ color: uiTheme.text }}>윤비서</p>
-                <div className="mt-5 rounded-lg px-3 py-2 text-xs font-semibold" style={{ backgroundColor: uiTheme.sectionAccent, color: uiTheme.primary }}>
+                <p className="text-sm font-semibold" style={{ color: uiTheme.headingText }}>윤비서</p>
+                <div className="mt-5 rounded-lg px-3 py-2 text-xs font-semibold" style={{ backgroundColor: uiTheme.primary, color: uiTheme.primaryForeground }}>
                   워크스페이스
                 </div>
-                <div className="mt-2 px-3 py-2 text-xs text-muted-foreground">업무일지</div>
+                <div className="mt-2 px-3 py-2 text-xs" style={{ color: uiTheme.sidebarText }}>업무일지</div>
               </div>
               <div className="p-4">
-                <div className="rounded-lg px-3 py-2 text-sm font-semibold" style={{ backgroundColor: uiTheme.sectionAccent, color: uiTheme.text }}>
+                <div className="rounded-lg px-3 py-2 text-sm font-semibold" style={{ backgroundColor: uiTheme.sectionAccent, color: uiTheme.headingText }}>
                   화면 테마 미리보기
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-3">

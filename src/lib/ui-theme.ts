@@ -7,6 +7,8 @@ export type UiTheme = {
   background: string;
   sidebar: string;
   text: string;
+  headingText: string;
+  sidebarText: string;
 };
 
 export const DEFAULT_UI_THEME: UiTheme = {
@@ -16,6 +18,8 @@ export const DEFAULT_UI_THEME: UiTheme = {
   background: "#fbfdfc",
   sidebar: "#ffffff",
   text: "#17343d",
+  headingText: "#17343d",
+  sidebarText: "#64748b",
 };
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
@@ -44,6 +48,12 @@ export function parseUiTheme(value: unknown): UiTheme {
       text: HEX_COLOR.test(candidate.text ?? "")
         ? candidate.text!
         : DEFAULT_UI_THEME.text,
+      headingText: HEX_COLOR.test(candidate.headingText ?? "")
+        ? candidate.headingText!
+        : DEFAULT_UI_THEME.headingText,
+      sidebarText: HEX_COLOR.test(candidate.sidebarText ?? "")
+        ? candidate.sidebarText!
+        : DEFAULT_UI_THEME.sidebarText,
     };
   } catch {
     return DEFAULT_UI_THEME;
@@ -64,5 +74,6 @@ export function applyUiTheme(theme: UiTheme) {
   root.style.setProperty("--foreground", theme.text);
   root.style.setProperty("--card-foreground", theme.text);
   root.style.setProperty("--popover-foreground", theme.text);
-  root.style.setProperty("--sidebar-foreground", theme.text);
+  root.style.setProperty("--heading-foreground", theme.headingText);
+  root.style.setProperty("--sidebar-foreground", theme.sidebarText);
 }

@@ -968,7 +968,7 @@ export function WorkJournal({ targetEmployeeId }: { targetEmployeeId?: string })
           }}
           onBlur={(event) => void saveDay(dateKey(day), event.currentTarget.innerHTML)}
           className={cn(
-            "min-h-0 min-w-0 flex-1 cursor-text overflow-y-auto p-2 text-[14px] leading-relaxed text-slate-700 outline-none [overflow-wrap:anywhere] xl:p-3",
+            "min-h-0 min-w-0 flex-1 cursor-text overflow-y-auto p-2 text-[14px] leading-relaxed text-foreground outline-none [overflow-wrap:anywhere] xl:p-3",
             // li 가 남아 있어도 div 문단과 같은 문단기호로 보이도록 마커 대신 ::before 로 통일한다.
             "[&_ul]:m-0 [&_ul]:list-none [&_ul]:p-0 [&_ol]:m-0 [&_ol]:list-none [&_ol]:p-0",
             "[&>div]:relative [&>div]:min-h-[1.5em] [&>div]:pl-4 [&>div]:before:absolute [&>div]:before:left-0 [&>div]:before:text-[14px] [&>div]:before:content-['•']",
