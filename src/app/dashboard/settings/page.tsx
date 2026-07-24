@@ -352,6 +352,10 @@ export default function SettingsPage() {
   const [deptColorSaving, setDeptColorSaving] = useState(false);
   const [uiTheme, setUiTheme] = useState<UiTheme>(DEFAULT_UI_THEME);
   const [uiThemeSaving, setUiThemeSaving] = useState(false);
+  const [uiThemeScope, setUiThemeScope] = useState<"company" | "personal">("company");
+  const [companyUiTheme, setCompanyUiTheme] = useState<UiTheme>(DEFAULT_UI_THEME);
+  const [personalUiTheme, setPersonalUiTheme] = useState<UiTheme | null>(null);
+  const [themeEmployeeId, setThemeEmployeeId] = useState<string | null>(null);
 
 
   const fetchApiKeys = useCallback(async () => {
@@ -440,19 +444,68 @@ export default function SettingsPage() {
   }, [supabase]);
 
   const fetchUiTheme = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("system_settings")
-      .select("value")
-      .eq("key", UI_THEME_KEY)
-      .maybeSingle();
-    if (error) {
-      console.error("화면 테마 조회 실패:", error.message);
+    const [{ data: setting, error }, { data: authData }] = await Promise.all([
+      supabase
+        .from("system_settings")
+        .select("value")
+        .eq("key", UI_THEME_KEY)
+        .maybeSingle(),
+      supabase.auth.getUser(),
+    ]);
+    if (error) console.error("회사 공통 화면 테마 조회 실패:", error.message);
+
+    const companyTheme = parseUiTheme(setting?.value);
+    setCompanyUiTheme(companyTheme);
+
+    const authUid = authData.user?.id;
+    if (!authUid) {
+      setUiTheme(companyTheme);
+      applyUiTheme(companyTheme);
       return;
     }
-    const next = parseUiTheme(data?.value);
+
+    const { data: employee } = await supabase
+      .from("employees")
+      .select("id")
+      .eq("auth_uid", authUid)
+      .maybeSingle();
+    setThemeEmployeeId(employee?.id ?? null);
+
+    if (!employee?.id) {
+      setUiTheme(companyTheme);
+      applyUiTheme(companyTheme);
+      return;
+    }
+
+    const { data: personalSetting } = await supabase
+      .from("employee_ui_themes")
+      .select("theme, is_enabled")
+      .eq("employee_id", employee.id)
+      .maybeSingle();
+    const personalTheme = personalSetting?.theme
+      ? parseUiTheme(personalSetting.theme)
+      : null;
+    setPersonalUiTheme(personalTheme);
+
+    if (personalSetting?.is_enabled && personalTheme) {
+      setUiThemeScope("personal");
+      setUiTheme(personalTheme);
+      applyUiTheme(personalTheme);
+    } else {
+      setUiThemeScope("company");
+      setUiTheme(companyTheme);
+      applyUiTheme(companyTheme);
+    }
+  }, [supabase]);
+
+  const changeUiThemeScope = (scope: "company" | "personal") => {
+    setUiThemeScope(scope);
+    const next = scope === "personal"
+      ? personalUiTheme ?? companyUiTheme
+      : companyUiTheme;
     setUiTheme(next);
     applyUiTheme(next);
-  }, [supabase]);
+  };
 
   const updateUiTheme = (key: keyof UiTheme, value: string) => {
     const next = { ...uiTheme, [key]: value };
@@ -462,17 +515,55 @@ export default function SettingsPage() {
 
   const handleSaveUiTheme = async () => {
     setUiThemeSaving(true);
-    const { error } = await supabase.from("system_settings").upsert({
-      key: UI_THEME_KEY,
-      value: JSON.stringify(uiTheme),
-      updated_at: new Date().toISOString(),
-    });
+    const now = new Date().toISOString();
+    const { error } = uiThemeScope === "company"
+      ? await supabase.from("system_settings").upsert({
+          key: UI_THEME_KEY,
+          value: JSON.stringify(uiTheme),
+          updated_at: now,
+        })
+      : themeEmployeeId
+        ? await supabase.from("employee_ui_themes").upsert({
+            employee_id: themeEmployeeId,
+            theme: uiTheme,
+            is_enabled: true,
+            updated_at: now,
+          })
+        : { error: new Error("로그인한 직원 정보를 찾을 수 없습니다.") };
     if (error) {
       console.error("화면 테마 저장 실패:", error.message);
       toast.error("화면 테마 저장에 실패했습니다.");
     } else {
+      if (uiThemeScope === "company") setCompanyUiTheme(uiTheme);
+      else setPersonalUiTheme(uiTheme);
       applyUiTheme(uiTheme);
-      toast.success("화면 테마를 저장했습니다.");
+      toast.success(uiThemeScope === "company" ? "회사 공통 테마를 저장했습니다." : "내 개인 테마를 저장했습니다.");
+    }
+    setUiThemeSaving(false);
+  };
+
+  const handleUseCompanyUiTheme = async () => {
+    if (!themeEmployeeId) {
+      toast.error("로그인한 직원 정보를 찾을 수 없습니다.");
+      return;
+    }
+    setUiThemeSaving(true);
+    const { error } = await supabase
+      .from("employee_ui_themes")
+      .upsert({
+        employee_id: themeEmployeeId,
+        theme: personalUiTheme ?? companyUiTheme,
+        is_enabled: false,
+        updated_at: new Date().toISOString(),
+      });
+    if (error) {
+      console.error("회사 공통 테마 전환 실패:", error.message);
+      toast.error("회사 공통 테마로 전환하지 못했습니다.");
+    } else {
+      setUiThemeScope("company");
+      setUiTheme(companyUiTheme);
+      applyUiTheme(companyUiTheme);
+      toast.success("회사 공통 테마를 사용합니다.");
     }
     setUiThemeSaving(false);
   };
@@ -1256,7 +1347,7 @@ export default function SettingsPage() {
 
       <PageSection
         title="화면 테마 설정"
-        description="윤비서 전체 화면의 포인트 색상과 배경 색상을 직접 선택할 수 있습니다."
+        description="회사 공통 테마와 현재 로그인한 직원의 개인 테마를 선택해 설정할 수 있습니다."
         action={
           <div className="flex gap-2">
             <Button type="button" variant="outline" onClick={resetUiTheme}>
@@ -1271,6 +1362,34 @@ export default function SettingsPage() {
         }
       >
         <SectionCard className="space-y-5">
+          <div className="rounded-xl border border-border/80 bg-muted/30 p-4">
+            <p className="text-sm font-semibold text-heading">테마 적용 범위</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              개인 테마는 현재 로그인한 직원에게만 적용되며, 다른 컴퓨터에서 로그인해도 유지됩니다.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant={uiThemeScope === "company" ? "default" : "outline"}
+                onClick={() => changeUiThemeScope("company")}
+              >
+                회사 공통 테마
+              </Button>
+              <Button
+                type="button"
+                variant={uiThemeScope === "personal" ? "default" : "outline"}
+                onClick={() => changeUiThemeScope("personal")}
+                disabled={!themeEmployeeId}
+              >
+                내 개인 테마
+              </Button>
+              {uiThemeScope === "personal" && (
+                <Button type="button" variant="ghost" onClick={() => void handleUseCompanyUiTheme()} disabled={uiThemeSaving}>
+                  개인 테마 끄기
+                </Button>
+              )}
+            </div>
+          </div>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {([
               ["primary", "포인트 색상", "버튼과 아이콘에 사용합니다."],
