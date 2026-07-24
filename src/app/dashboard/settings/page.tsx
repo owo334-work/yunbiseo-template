@@ -1274,9 +1274,11 @@ export default function SettingsPage() {
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {([
               ["primary", "포인트 색상", "버튼과 아이콘에 사용합니다."],
+              ["primaryForeground", "포인트 버튼 글자색", "강조 버튼 위의 글자와 아이콘 색상입니다."],
               ["sectionAccent", "제목 배경색", "섹션 제목과 선택 메뉴에 사용합니다."],
               ["background", "전체 배경색", "윤비서 작업 화면의 배경입니다."],
               ["sidebar", "사이드바 색상", "왼쪽 메뉴 영역의 배경입니다."],
+              ["text", "기본 글자색", "제목과 본문 등 화면의 기본 글자색입니다."],
             ] as const).map(([key, label, description]) => (
               <div key={key} className="rounded-xl border border-border/80 bg-card p-4">
                 <Label htmlFor={`theme-${key}`} className="text-sm font-semibold">
@@ -1308,19 +1310,19 @@ export default function SettingsPage() {
           >
             <div className="grid min-h-40 grid-cols-[150px_1fr]">
               <div className="border-r border-border/70 p-3" style={{ backgroundColor: uiTheme.sidebar }}>
-                <p className="text-sm font-semibold" style={{ color: uiTheme.primary }}>윤비서</p>
+                <p className="text-sm font-semibold" style={{ color: uiTheme.text }}>윤비서</p>
                 <div className="mt-5 rounded-lg px-3 py-2 text-xs font-semibold" style={{ backgroundColor: uiTheme.sectionAccent, color: uiTheme.primary }}>
                   워크스페이스
                 </div>
                 <div className="mt-2 px-3 py-2 text-xs text-muted-foreground">업무일지</div>
               </div>
               <div className="p-4">
-                <div className="rounded-lg px-3 py-2 text-sm font-semibold" style={{ backgroundColor: uiTheme.sectionAccent }}>
+                <div className="rounded-lg px-3 py-2 text-sm font-semibold" style={{ backgroundColor: uiTheme.sectionAccent, color: uiTheme.text }}>
                   화면 테마 미리보기
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-3">
-                  <div className="rounded-lg border bg-white p-3 text-xs">화이트 카드 영역</div>
-                  <button type="button" className="rounded-lg px-3 py-3 text-xs font-semibold text-white" style={{ backgroundColor: uiTheme.primary }}>
+                  <div className="rounded-lg border bg-white p-3 text-xs" style={{ color: uiTheme.text }}>화이트 카드 영역</div>
+                  <button type="button" className="rounded-lg px-3 py-3 text-xs font-semibold" style={{ backgroundColor: uiTheme.primary, color: uiTheme.primaryForeground }}>
                     포인트 버튼
                   </button>
                 </div>
