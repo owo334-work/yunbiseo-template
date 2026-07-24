@@ -990,7 +990,7 @@ export function WorkJournal({ targetEmployeeId }: { targetEmployeeId?: string })
               {employeeName ? `${employeeName} 업무일지` : "업무일지"}
             </h1>
             {canAssignRequests ? (
-              <Button variant="outline" size="xs" onClick={() => setRequestDialogOpen(true)}>
+              <Button size="xs" className="shadow-sm" onClick={() => setRequestDialogOpen(true)}>
                 <Megaphone className="h-3.5 w-3.5" />업무요청
               </Button>
             ) : null}
