@@ -8,6 +8,7 @@ import { BackButton } from "@/components/back-button";
 import { NavHistoryRecorder } from "@/components/nav-history";
 import { MaskingProvider } from "@/components/masking-provider";
 import { MaskModeIndicator } from "@/components/mask-mode-indicator";
+import { UiThemeApplier } from "@/components/ui-theme-applier";
 import { cn } from "@/lib/utils";
 
 export default function DashboardLayout({
@@ -25,10 +26,11 @@ export default function DashboardLayout({
 
   return (
     <MaskingProvider>
-      <div className="flex h-screen overflow-hidden bg-[#fbfdfc]">
+      <div className="flex h-screen overflow-hidden bg-background">
         <SessionGuard />
         <NavHistoryRecorder />
         <MaskModeIndicator />
+        <UiThemeApplier />
         <Sidebar />
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <MobileSidebar />

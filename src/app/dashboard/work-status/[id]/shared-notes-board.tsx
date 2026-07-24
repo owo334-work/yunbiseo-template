@@ -205,7 +205,7 @@ export function SharedNotesBoard({
 
   return (
     <Card className="gap-0 overflow-hidden rounded-xl border-border/80 bg-white py-0 shadow-[0_10px_30px_-26px_rgba(13,77,77,0.32)]">
-      <CardHeader className="bg-[#e7f2ee] px-4 py-3">
+      <CardHeader className="bg-[var(--section-accent)] px-4 py-3">
         <CardTitle className="flex items-center gap-2 text-sm">
           <Users className="h-4 w-4 text-primary" />
           {title}

@@ -602,7 +602,7 @@ export default function WorkspacePage() {
         <div className="min-w-0 flex-1 space-y-6">
           {/* 전 직원 일정 통합 캘린더 (개인 페이지에서 등록한 일정이 여기에 모입니다) */}
           <Card className="gap-0 overflow-hidden rounded-xl border-border/80 bg-white py-0 shadow-[0_10px_30px_-26px_rgba(13,77,77,0.32)]">
-            <CardHeader className="bg-[#e7f2ee] px-4 py-3">
+            <CardHeader className="bg-[var(--section-accent)] px-4 py-3">
               <div className="flex items-center justify-between gap-2">
                 <CardTitle className="flex items-center gap-2 text-sm">
                   <CalendarDays className="h-4 w-4 text-primary" />전 직원 일정
@@ -713,7 +713,7 @@ export default function WorkspacePage() {
             />
           ) : (
             <section className="overflow-hidden rounded-xl border border-border/80 bg-white shadow-[0_10px_30px_-26px_rgba(13,77,77,0.32)]">
-              <div className="flex items-center gap-2 bg-[#e7f2ee] px-4 py-3 text-sm font-semibold text-foreground">
+              <div className="flex items-center gap-2 bg-[var(--section-accent)] px-4 py-3 text-sm font-semibold text-foreground">
                 <ClipboardCheck className="h-4 w-4 text-primary" />
                 직원 업무현황
               </div>

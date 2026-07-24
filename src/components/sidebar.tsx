@@ -274,7 +274,7 @@ function NavItem({
       className={cn(
         "group flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition-all",
         isActive
-          ? "border-primary/10 bg-[#e7f2ee] font-semibold text-primary"
+          ? "border-primary/10 bg-[var(--section-accent)] font-semibold text-primary"
           : "border-transparent text-muted-foreground hover:border-primary/10 hover:bg-[#f2f7f5] hover:text-foreground",
         collapsed && "justify-center px-0"
       )}

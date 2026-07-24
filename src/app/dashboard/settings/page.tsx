@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, CalendarRange, Check, Copy, Eye, EyeOff, FolderKanban, KeyRound, MessageSquare, Receipt, Sparkles } from "lucide-react";
+import { Bot, CalendarRange, Check, Copy, Eye, EyeOff, FolderKanban, KeyRound, MessageSquare, Palette, Receipt, RotateCcw, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
@@ -50,6 +50,13 @@ import {
   parseDepartmentColors,
   type DepartmentColorMap,
 } from "@/lib/department-colors";
+import {
+  applyUiTheme,
+  DEFAULT_UI_THEME,
+  parseUiTheme,
+  type UiTheme,
+  UI_THEME_KEY,
+} from "@/lib/ui-theme";
 
 import { Badge } from "@/components/ui/badge";
 
@@ -343,6 +350,8 @@ export default function SettingsPage() {
   const [departments, setDepartments] = useState<string[]>([]);
   const [deptColors, setDeptColors] = useState<DepartmentColorMap>({});
   const [deptColorSaving, setDeptColorSaving] = useState(false);
+  const [uiTheme, setUiTheme] = useState<UiTheme>(DEFAULT_UI_THEME);
+  const [uiThemeSaving, setUiThemeSaving] = useState(false);
 
 
   const fetchApiKeys = useCallback(async () => {
@@ -429,6 +438,49 @@ export default function SettingsPage() {
     setDepartments(Array.from(set).sort((a, b) => a.localeCompare(b, "ko")));
     setDeptColors(parseDepartmentColors(settingRes.data?.value));
   }, [supabase]);
+
+  const fetchUiTheme = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("system_settings")
+      .select("value")
+      .eq("key", UI_THEME_KEY)
+      .maybeSingle();
+    if (error) {
+      console.error("화면 테마 조회 실패:", error.message);
+      return;
+    }
+    const next = parseUiTheme(data?.value);
+    setUiTheme(next);
+    applyUiTheme(next);
+  }, [supabase]);
+
+  const updateUiTheme = (key: keyof UiTheme, value: string) => {
+    const next = { ...uiTheme, [key]: value };
+    setUiTheme(next);
+    applyUiTheme(next);
+  };
+
+  const handleSaveUiTheme = async () => {
+    setUiThemeSaving(true);
+    const { error } = await supabase.from("system_settings").upsert({
+      key: UI_THEME_KEY,
+      value: JSON.stringify(uiTheme),
+      updated_at: new Date().toISOString(),
+    });
+    if (error) {
+      console.error("화면 테마 저장 실패:", error.message);
+      toast.error("화면 테마 저장에 실패했습니다.");
+    } else {
+      applyUiTheme(uiTheme);
+      toast.success("화면 테마를 저장했습니다.");
+    }
+    setUiThemeSaving(false);
+  };
+
+  const resetUiTheme = () => {
+    setUiTheme(DEFAULT_UI_THEME);
+    applyUiTheme(DEFAULT_UI_THEME);
+  };
 
   const persistDeptColors = async (next: DepartmentColorMap) => {
     setDeptColorSaving(true);
@@ -797,7 +849,8 @@ export default function SettingsPage() {
     fetchNotificationFilters();
     fetchRequestMinPosition();
     fetchDeptColors();
-  }, [fetchApiKeys, fetchProjectTypes, fetchExpenseTypes, fetchScheduleCategories, fetchChatModel, fetchBoltaSettings, fetchGeminiSettings, fetchSlackSettings, fetchNotificationFilters, fetchRequestMinPosition, fetchDeptColors]);
+    fetchUiTheme();
+  }, [fetchApiKeys, fetchProjectTypes, fetchExpenseTypes, fetchScheduleCategories, fetchChatModel, fetchBoltaSettings, fetchGeminiSettings, fetchSlackSettings, fetchNotificationFilters, fetchRequestMinPosition, fetchDeptColors, fetchUiTheme]);
 
   const openTypeDialog = (type?: ProjectType) => {
     setEditingType(type ?? null);
@@ -1200,6 +1253,82 @@ export default function SettingsPage() {
         title="설정"
         description="AI 모델, 외부 연동 키, 프로젝트·매입·일정 유형을 같은 패턴으로 관리합니다."
       />
+
+      <PageSection
+        title="화면 테마 설정"
+        description="윤비서 전체 화면의 포인트 색상과 배경 색상을 직접 선택할 수 있습니다."
+        action={
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={resetUiTheme}>
+              <RotateCcw className="mr-2 size-4" />
+              기본값
+            </Button>
+            <Button type="button" onClick={() => void handleSaveUiTheme()} disabled={uiThemeSaving}>
+              <Palette className="mr-2 size-4" />
+              {uiThemeSaving ? "저장 중..." : "테마 저장"}
+            </Button>
+          </div>
+        }
+      >
+        <SectionCard className="space-y-5">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {([
+              ["primary", "포인트 색상", "버튼과 아이콘에 사용합니다."],
+              ["sectionAccent", "제목 배경색", "섹션 제목과 선택 메뉴에 사용합니다."],
+              ["background", "전체 배경색", "윤비서 작업 화면의 배경입니다."],
+              ["sidebar", "사이드바 색상", "왼쪽 메뉴 영역의 배경입니다."],
+            ] as const).map(([key, label, description]) => (
+              <div key={key} className="rounded-xl border border-border/80 bg-card p-4">
+                <Label htmlFor={`theme-${key}`} className="text-sm font-semibold">
+                  {label}
+                </Label>
+                <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+                <div className="mt-3 flex items-center gap-2">
+                  <input
+                    id={`theme-${key}`}
+                    type="color"
+                    value={uiTheme[key]}
+                    onChange={(event) => updateUiTheme(key, event.target.value)}
+                    className="h-10 w-12 rounded-lg border border-input bg-white p-1"
+                  />
+                  <Input
+                    value={uiTheme[key]}
+                    onChange={(event) => updateUiTheme(key, event.target.value)}
+                    className="font-mono text-xs"
+                    maxLength={7}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div
+            className="overflow-hidden rounded-xl border border-border/80"
+            style={{ backgroundColor: uiTheme.background }}
+          >
+            <div className="grid min-h-40 grid-cols-[150px_1fr]">
+              <div className="border-r border-border/70 p-3" style={{ backgroundColor: uiTheme.sidebar }}>
+                <p className="text-sm font-semibold" style={{ color: uiTheme.primary }}>윤비서</p>
+                <div className="mt-5 rounded-lg px-3 py-2 text-xs font-semibold" style={{ backgroundColor: uiTheme.sectionAccent, color: uiTheme.primary }}>
+                  워크스페이스
+                </div>
+                <div className="mt-2 px-3 py-2 text-xs text-muted-foreground">업무일지</div>
+              </div>
+              <div className="p-4">
+                <div className="rounded-lg px-3 py-2 text-sm font-semibold" style={{ backgroundColor: uiTheme.sectionAccent }}>
+                  화면 테마 미리보기
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div className="rounded-lg border bg-white p-3 text-xs">화이트 카드 영역</div>
+                  <button type="button" className="rounded-lg px-3 py-3 text-xs font-semibold text-white" style={{ backgroundColor: uiTheme.primary }}>
+                    포인트 버튼
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+      </PageSection>
 
       <StatsGrid>
         <StatCard
