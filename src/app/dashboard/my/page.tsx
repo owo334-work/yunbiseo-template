@@ -6,6 +6,8 @@ import {
   LockKeyhole,
   LogOut,
   Mail,
+  Palette,
+  RotateCcw,
   ShieldCheck,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -37,8 +39,16 @@ import { Label } from "@/components/ui/label";
 import { useMasking } from "@/components/masking-provider";
 import { clearClientSession, createClient } from "@/lib/supabase/client";
 import { sendLog } from "@/lib/log-client";
+import {
+  applyUiTheme,
+  DEFAULT_UI_THEME,
+  parseUiTheme,
+  type UiTheme,
+  UI_THEME_KEY,
+} from "@/lib/ui-theme";
 
 type MyEmployee = {
+  id: string;
   name: string;
   department: string | null;
   position: string | null;
@@ -70,6 +80,10 @@ export default function MyPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [companyTheme, setCompanyTheme] = useState<UiTheme>(DEFAULT_UI_THEME);
+  const [personalTheme, setPersonalTheme] = useState<UiTheme>(DEFAULT_UI_THEME);
+  const [personalThemeEnabled, setPersonalThemeEnabled] = useState(false);
+  const [themeSaving, setThemeSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -88,11 +102,17 @@ export default function MyPage() {
 
       const { data: employeeRow } = await supabase
         .from("employees")
-        .select("name, department, position, employee_type, email, phone, login_id")
+        .select("id, name, department, position, employee_type, email, phone, login_id")
         .eq("auth_uid", user.id)
         .maybeSingle();
 
+      if (!employeeRow?.id) {
+        setEmployee(null);
+        return;
+      }
+
       setEmployee({
+        id: employeeRow.id,
         name: employeeRow?.name ?? user.email?.split("@")[0] ?? "사용자",
         department: employeeRow?.department ?? null,
         position: employeeRow?.position ?? null,
@@ -101,6 +121,26 @@ export default function MyPage() {
         phone: employeeRow?.phone ?? null,
         login_id: employeeRow?.login_id ?? null,
       });
+
+      const [{ data: companySetting }, { data: personalSetting }] = await Promise.all([
+        supabase
+          .from("system_settings")
+          .select("value")
+          .eq("key", UI_THEME_KEY)
+          .maybeSingle(),
+        supabase
+          .from("employee_ui_themes")
+          .select("theme, is_enabled")
+          .eq("employee_id", employeeRow.id)
+          .maybeSingle(),
+      ]);
+      const nextCompanyTheme = parseUiTheme(companySetting?.value);
+      const nextPersonalTheme = personalSetting?.theme
+        ? parseUiTheme(personalSetting.theme)
+        : nextCompanyTheme;
+      setCompanyTheme(nextCompanyTheme);
+      setPersonalTheme(nextPersonalTheme);
+      setPersonalThemeEnabled(Boolean(personalSetting?.is_enabled));
     } catch {
       toast.error("내 정보 조회에 실패했습니다.");
       setEmployee(null);
@@ -222,6 +262,52 @@ export default function MyPage() {
     } finally {
       setLoggingOut(false);
     }
+  };
+
+  const updatePersonalTheme = (key: keyof UiTheme, value: string) => {
+    const next = { ...personalTheme, [key]: value };
+    setPersonalTheme(next);
+    applyUiTheme(next);
+  };
+
+  const handleSavePersonalTheme = async () => {
+    if (!employee) return;
+    setThemeSaving(true);
+    const { error } = await supabase.from("employee_ui_themes").upsert({
+      employee_id: employee.id,
+      theme: personalTheme,
+      is_enabled: true,
+      updated_at: new Date().toISOString(),
+    });
+    if (error) {
+      console.error("개인 테마 저장 실패:", error.message);
+      toast.error("개인 테마 저장에 실패했습니다.");
+    } else {
+      setPersonalThemeEnabled(true);
+      applyUiTheme(personalTheme);
+      toast.success("내 개인 테마를 저장했습니다.");
+    }
+    setThemeSaving(false);
+  };
+
+  const handleUseCompanyTheme = async () => {
+    if (!employee) return;
+    setThemeSaving(true);
+    const { error } = await supabase.from("employee_ui_themes").upsert({
+      employee_id: employee.id,
+      theme: personalTheme,
+      is_enabled: false,
+      updated_at: new Date().toISOString(),
+    });
+    if (error) {
+      console.error("회사 공통 테마 전환 실패:", error.message);
+      toast.error("회사 공통 테마로 전환하지 못했습니다.");
+    } else {
+      setPersonalThemeEnabled(false);
+      applyUiTheme(companyTheme);
+      toast.success("회사 공통 테마를 사용합니다.");
+    }
+    setThemeSaving(false);
   };
 
   if (loading) {
@@ -404,6 +490,86 @@ export default function MyPage() {
               <DetailItem label="로그인 ID" value={employee.login_id ? mask("name", employee.login_id) : "-"} />
             </DetailGrid>
           )}
+        </SectionCard>
+      </section>
+
+      <section className="space-y-4">
+        <SectionIntro
+          title="내 화면 테마"
+          description="현재 로그인한 내 계정에만 적용되는 색상을 설정합니다. 다른 컴퓨터에서 로그인해도 유지됩니다."
+          action={
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setPersonalTheme(companyTheme);
+                  applyUiTheme(companyTheme);
+                }}
+              >
+                <RotateCcw className="size-4" />
+                회사 색상으로 맞추기
+              </Button>
+              <Button type="button" size="sm" onClick={() => void handleSavePersonalTheme()} disabled={themeSaving}>
+                <Palette className="size-4" />
+                {themeSaving ? "저장 중..." : "개인 테마 저장"}
+              </Button>
+            </div>
+          }
+        />
+
+        <SectionCard className="space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/30 p-4">
+            <div>
+              <p className="text-sm font-semibold text-heading">
+                현재 적용: {personalThemeEnabled ? "내 개인 테마" : "회사 공통 테마"}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                색상을 수정한 뒤 개인 테마 저장을 누르면 내 계정에 즉시 적용됩니다.
+              </p>
+            </div>
+            {personalThemeEnabled && (
+              <Button type="button" variant="outline" size="sm" onClick={() => void handleUseCompanyTheme()} disabled={themeSaving}>
+                개인 테마 끄기
+              </Button>
+            )}
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {([
+              ["primary", "포인트 색상", "버튼과 선택 메뉴 배경"],
+              ["primaryForeground", "포인트 글자색", "강조 버튼 위 글자와 아이콘"],
+              ["sectionAccent", "제목 배경색", "섹션 제목 배경"],
+              ["background", "전체 배경색", "작업 화면의 배경"],
+              ["sidebar", "사이드바 색상", "왼쪽 메뉴 영역 배경"],
+              ["text", "기본 글자색", "본문과 일반 정보"],
+              ["headingText", "제목 글자색", "페이지 제목과 굵은 제목"],
+              ["sidebarText", "사이드 메뉴 글자색", "선택되지 않은 메뉴 글자"],
+            ] as const).map(([key, label, description]) => (
+              <div key={key} className="rounded-xl border border-border/80 bg-card p-4">
+                <Label htmlFor={`personal-theme-${key}`} className="text-sm font-semibold">
+                  {label}
+                </Label>
+                <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+                <div className="mt-3 flex items-center gap-2">
+                  <input
+                    id={`personal-theme-${key}`}
+                    type="color"
+                    value={personalTheme[key]}
+                    onChange={(event) => updatePersonalTheme(key, event.target.value)}
+                    className="h-10 w-12 rounded-lg border border-input bg-white p-1"
+                  />
+                  <Input
+                    value={personalTheme[key]}
+                    onChange={(event) => updatePersonalTheme(key, event.target.value)}
+                    className="font-mono text-xs"
+                    maxLength={7}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
         </SectionCard>
       </section>
 
