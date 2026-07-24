@@ -83,7 +83,7 @@ export function PageHeader({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 rounded-[0.75rem] border border-border/70 bg-card/85 p-4 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/75 lg:flex-row lg:items-start lg:justify-between lg:p-5",
+        "flex flex-col gap-3 border-b border-border/80 bg-transparent px-1 pb-4 pt-1 lg:flex-row lg:items-start lg:justify-between",
         className
       )}
     >
@@ -113,7 +113,7 @@ export function PageHeader({
           ) : null}
 
           <div className="flex flex-wrap items-center gap-1.5">
-            <h3 className="text-xl font-semibold tracking-tight text-foreground md:text-2xl">
+            <h3 className="text-xl font-semibold tracking-tight text-foreground md:text-[1.65rem]">
               {title}
             </h3>
             {titleAccessory}
@@ -143,7 +143,7 @@ export function PageToolbar({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 rounded-[0.75rem] border border-border/70 bg-card/85 p-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/75 md:p-4",
+        "flex flex-col gap-3 rounded-lg border border-border/80 bg-card p-3 shadow-[0_8px_20px_-18px_rgba(13,77,77,0.25)] md:p-3.5",
         className
       )}
       {...props}

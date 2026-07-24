@@ -204,15 +204,15 @@ export function SharedNotesBoard({
   };
 
   return (
-    <Card className="rounded-[1rem] border-border/70 bg-card/85">
-      <CardHeader className="pb-3">
+    <Card className="gap-0 overflow-hidden rounded-xl border-border/80 bg-white py-0 shadow-[0_10px_30px_-26px_rgba(13,77,77,0.32)]">
+      <CardHeader className="bg-[#e7f2ee] px-4 py-3">
         <CardTitle className="flex items-center gap-2 text-sm">
           <Users className="h-4 w-4 text-primary" />
           {title}
         </CardTitle>
         <p className="text-xs text-muted-foreground">{description}</p>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-3 p-4">
         {notes.length === 0 ? (
           <p className="rounded-lg border border-dashed border-border/70 px-3 py-4 text-center text-xs text-muted-foreground">
             아직 공유된 내용이 없습니다.

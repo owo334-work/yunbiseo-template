@@ -2,11 +2,14 @@
 
 import Link from "next/link";
 import {
+  Activity,
   CalendarDays,
+  ClipboardCheck,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  Clock3,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -512,11 +515,25 @@ export default function WorkspacePage() {
     );
   });
 
+  const todayKey = format(new Date(), "yyyy-MM-dd");
+  const todayScheduleCount = schedules.filter((schedule) => {
+    const startKey = format(parseISO(schedule.start_at), "yyyy-MM-dd");
+    const endKey = format(parseISO(schedule.end_at), "yyyy-MM-dd");
+    return startKey <= todayKey && todayKey <= endKey;
+  }).length;
+  const openTaskCount = tasks.filter(
+    (task) => task.archived_at == null && task.status !== "완료",
+  ).length;
+  const inProgressTaskCount = tasks.filter(
+    (task) => task.archived_at == null && task.status === "진행중",
+  ).length;
+
   return (
-    <PageShell>
+    <PageShell className="workspace-redesign">
       <PageHeader
-        title="업무 대시보드"
-        description="전 직원의 업무현황을 한눈에 확인합니다. 직원 카드를 누르면 일간·주간·월간 업무리스트와 진행상태를 볼 수 있습니다."
+        eyebrow="YUNBISEO WORKSPACE"
+        title="워크스페이스"
+        description="오늘의 일정과 전 직원의 업무 흐름을 한 화면에서 확인하세요."
       />
 
       {tableMissing ? (
@@ -529,11 +546,63 @@ export default function WorkspacePage() {
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+      <div className="grid gap-3 sm:grid-cols-3">
+        {[
+          {
+            label: "오늘 일정",
+            value: todayScheduleCount,
+            suffix: "건",
+            detail: "오늘 등록된 전체 일정",
+            icon: CalendarDays,
+            tone: "text-primary",
+          },
+          {
+            label: "마감 업무",
+            value: openTaskCount,
+            suffix: "건",
+            detail: "확인이 필요한 미완료 업무",
+            icon: Clock3,
+            tone: "text-rose-500",
+          },
+          {
+            label: "진행 중",
+            value: inProgressTaskCount,
+            suffix: "건",
+            detail: "현재 진행 중인 업무",
+            icon: Activity,
+            tone: "text-primary",
+          },
+        ].map((summary) => {
+          const Icon = summary.icon;
+          return (
+            <Card
+              key={summary.label}
+              className="gap-0 rounded-xl border-border/80 bg-white py-0 shadow-[0_8px_22px_-20px_rgba(13,77,77,0.3)]"
+            >
+              <CardContent className="flex items-center justify-between p-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                    <Icon className={`h-4 w-4 ${summary.tone}`} />
+                    {summary.label}
+                  </div>
+                  <p className={`text-2xl font-semibold tracking-tight ${summary.tone}`}>
+                    {summary.value}
+                    <span className="ml-0.5 text-sm font-medium">{summary.suffix}</span>
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">{summary.detail}</p>
+                </div>
+                <ChevronRight className="h-4 w-4 text-muted-foreground/60" />
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start">
         <div className="min-w-0 flex-1 space-y-6">
           {/* 전 직원 일정 통합 캘린더 (개인 페이지에서 등록한 일정이 여기에 모입니다) */}
-          <Card className="border-border/70 bg-card/85">
-            <CardHeader className="pb-2">
+          <Card className="gap-0 overflow-hidden rounded-xl border-border/80 bg-white py-0 shadow-[0_10px_30px_-26px_rgba(13,77,77,0.32)]">
+            <CardHeader className="bg-[#e7f2ee] px-4 py-3">
               <div className="flex items-center justify-between gap-2">
                 <CardTitle className="flex items-center gap-2 text-sm">
                   <CalendarDays className="h-4 w-4 text-primary" />전 직원 일정
@@ -571,7 +640,7 @@ export default function WorkspacePage() {
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-3 p-4">
               {deptLegend.items.length > 0 || deptLegend.hasNone ? (
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
                   <span className="text-xs text-muted-foreground">
@@ -611,7 +680,7 @@ export default function WorkspacePage() {
             </CardContent>
           </Card>
 
-          <PageToolbar>
+          <PageToolbar className="shadow-none">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <Input
                 placeholder="이름, 부서, 직급으로 검색하세요"
@@ -643,7 +712,12 @@ export default function WorkspacePage() {
               }
             />
           ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <section className="overflow-hidden rounded-xl border border-border/80 bg-white shadow-[0_10px_30px_-26px_rgba(13,77,77,0.32)]">
+              <div className="flex items-center gap-2 bg-[#e7f2ee] px-4 py-3 text-sm font-semibold text-foreground">
+                <ClipboardCheck className="h-4 w-4 text-primary" />
+                직원 업무현황
+              </div>
+              <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 2xl:grid-cols-4">
               {filtered.map((employee) => {
                 const openTasks = [...employee.tasks]
                   .filter((t) => t.status !== "완료")
@@ -663,7 +737,7 @@ export default function WorkspacePage() {
                     href={`/dashboard/work-journal/${employee.id}`}
                     className="min-w-0 overflow-hidden"
                   >
-                    <Card className="h-full min-w-0 overflow-hidden cursor-pointer border-border/70 bg-card/85 transition-all hover:border-primary/30 hover:shadow-md">
+                    <Card className="h-full min-w-0 cursor-pointer overflow-hidden rounded-lg border-border/80 bg-white shadow-none transition-all hover:border-primary/30 hover:shadow-[0_8px_20px_-18px_rgba(13,77,77,0.3)]">
                       <CardContent className="min-w-0 space-y-3 overflow-hidden p-4">
                         <div className="flex min-w-0 items-center gap-3">
                           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
@@ -763,11 +837,12 @@ export default function WorkspacePage() {
                   </Link>
                 );
               })}
-            </div>
+              </div>
+            </section>
           )}
         </div>
 
-        <aside className="w-full shrink-0 lg:w-[360px]">
+        <aside className="w-full shrink-0 xl:w-[360px]">
           <SharePanel />
         </aside>
       </div>

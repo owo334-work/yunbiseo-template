@@ -25,7 +25,7 @@ export default function DashboardLayout({
 
   return (
     <MaskingProvider>
-      <div className="flex h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(13,110,110,0.08),_transparent_30%),radial-gradient(circle_at_top,_rgba(180,131,83,0.08),_transparent_28%)]">
+      <div className="flex h-screen overflow-hidden bg-[#fbfdfc]">
         <SessionGuard />
         <NavHistoryRecorder />
         <MaskModeIndicator />
@@ -37,7 +37,7 @@ export default function DashboardLayout({
             <main
               className={cn(
                 "min-h-0 flex-1 overflow-x-hidden",
-                isFullWidth ? "overflow-y-hidden" : "overflow-y-auto px-4 py-4 md:px-6 md:py-6"
+                isFullWidth ? "overflow-y-hidden" : "overflow-y-auto px-4 py-4 md:px-6 md:py-5"
               )}
             >
               <div

@@ -272,10 +272,10 @@ function NavItem({
       href={item.href}
       onClick={onNavigate}
       className={cn(
-        "group flex items-center gap-3 rounded-2xl border px-3 py-2.5 text-sm transition-all",
+        "group flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition-all",
         isActive
-          ? "border-primary/15 bg-primary/95 text-primary-foreground shadow-[0_16px_32px_-22px_rgba(13,105,106,0.7)]"
-          : "border-transparent text-muted-foreground hover:border-primary/10 hover:bg-white/70 hover:text-foreground",
+          ? "border-primary/10 bg-[#e7f2ee] font-semibold text-primary"
+          : "border-transparent text-muted-foreground hover:border-primary/10 hover:bg-[#f2f7f5] hover:text-foreground",
         collapsed && "justify-center px-0"
       )}
     >
@@ -592,13 +592,13 @@ export function Sidebar() {
         collapsed ? "w-20" : "w-72"
       )}
     >
-      <div className="m-3 flex h-[calc(100vh-1.5rem)] flex-col rounded-[1rem] border border-white/70 bg-sidebar/85 shadow-[0_28px_70px_-38px_rgba(13,77,77,0.4)] backdrop-blur-md">
+      <div className="flex h-screen flex-col border-r border-sidebar-border/80 bg-sidebar">
         <div className="flex items-center gap-3 border-b border-sidebar-border/70 px-4 py-4">
           <Brand collapsed={collapsed} />
           <Button
             variant="ghost"
             size="icon"
-            className={cn("h-9 w-9 rounded-2xl", collapsed ? "mx-auto" : "ml-auto")}
+            className={cn("h-9 w-9 rounded-lg", collapsed ? "mx-auto" : "ml-auto")}
             onClick={() => setCollapsed((prev) => !prev)}
           >
             {collapsed ? (
