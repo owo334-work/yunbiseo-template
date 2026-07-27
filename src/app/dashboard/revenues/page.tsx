@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  BarChart3,
   CircleDollarSign,
   FileClock,
   ReceiptText,
@@ -402,7 +403,18 @@ export default function RevenuesPage() {
           title="매출 관리"
           funKey="revenues"
           description="모든 매출을 한곳에서 관리하고 입금 상태와 세금계산서 진행 상황까지 바로 확인할 수 있습니다."
-          actions={<Button onClick={handleAdd}>매출 등록</Button>}
+          actions={
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={() => router.push("/dashboard/revenues/commerce")}
+              >
+                <BarChart3 />
+                쇼핑몰 분석
+              </Button>
+              <Button onClick={handleAdd}>매출 등록</Button>
+            </div>
+          }
         />
 
         <StatsGrid>
