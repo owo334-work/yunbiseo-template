@@ -51,7 +51,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { createClient } from "@/lib/supabase/client";
 
 type Store = {
@@ -459,14 +458,16 @@ export default function CommerceRevenuePage() {
       {loading ? (
         <LoadingState />
       ) : (
-        <Tabs defaultValue="overview" className="gap-5">
-          <TabsList className="max-w-full overflow-x-auto">
-            <TabsTrigger value="overview">손익 대시보드</TabsTrigger>
-            <TabsTrigger value="products">상품별 매출</TabsTrigger>
-            <TabsTrigger value="stock">품절예측</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="overview" className="space-y-5">
+        <div className="space-y-5">
+          <section className="space-y-5" aria-labelledby="commerce-profit-heading">
+            <div>
+              <h2 id="commerce-profit-heading" className="text-xl font-semibold tracking-tight">
+                손익 대시보드
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                선택한 달의 매출과 비용 흐름을 한눈에 확인합니다.
+              </p>
+            </div>
             <StatsGrid>
               <StatCard label="선택 월 매출" value={won(totals.sales)} description="배송비 수익 포함" icon={TrendingUp} />
               <StatCard label="광고 전 이익" value={won(totals.profit)} description="원가·수수료 차감" icon={DollarSign} tone="positive" />
@@ -529,9 +530,17 @@ export default function CommerceRevenuePage() {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
+          </section>
 
-          <TabsContent value="products">
+          <section className="space-y-3" aria-labelledby="commerce-products-heading">
+            <div>
+              <h2 id="commerce-products-heading" className="text-xl font-semibold tracking-tight">
+                상품별 매출
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                상품별 판매량과 매출, 원가 등록 상태를 비교합니다.
+              </p>
+            </div>
             <Card>
               <CardHeader><CardTitle>상품별 선택 월 실적</CardTitle></CardHeader>
               <CardContent className="overflow-x-auto">
@@ -555,9 +564,17 @@ export default function CommerceRevenuePage() {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
+          </section>
 
-          <TabsContent value="stock">
+          <section className="space-y-3" aria-labelledby="commerce-stock-heading">
+            <div>
+              <h2 id="commerce-stock-heading" className="text-xl font-semibold tracking-tight">
+                품절예측
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                최근 7일 판매 속도와 현재 가용재고를 기준으로 위험 상품을 확인합니다.
+              </p>
+            </div>
             <Card>
               <CardHeader><CardTitle>최근 7일 판매량 기준 품절예측</CardTitle></CardHeader>
               <CardContent className="overflow-x-auto">
@@ -584,8 +601,8 @@ export default function CommerceRevenuePage() {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
-        </Tabs>
+          </section>
+        </div>
       )}
     </PageShell>
   );
