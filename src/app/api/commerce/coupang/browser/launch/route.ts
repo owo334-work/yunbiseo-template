@@ -3,8 +3,8 @@ import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
-  COUPANG_BROWSER_LOCK_FILE,
-  COUPANG_BROWSER_STATUS_FILE,
+  getCoupangAccountPaths,
+  readCoupangBrowserAccounts,
 } from "@/lib/coupang-browser-local";
 import {
   createRouteAuthErrorResponse,
@@ -23,13 +23,26 @@ async function processIsRunning(pid: number) {
   }
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   const { user, authUnavailable } = await requireRouteUser();
   if (!user) return createRouteAuthErrorResponse(authUnavailable);
 
+  const body = await request.json().catch(() => ({}));
+  const accountId =
+    typeof body.account_id === "string" ? body.account_id : "";
+  const accounts = await readCoupangBrowserAccounts();
+  const account = accounts.find((item) => item.id === accountId);
+  if (!account) {
+    return Response.json(
+      { error: "연결할 쿠팡 계정을 찾지 못했습니다." },
+      { status: 404 }
+    );
+  }
+  const { lockFile, statusFile } = getCoupangAccountPaths(account.id);
+
   try {
-    await access(COUPANG_BROWSER_LOCK_FILE);
-    const pid = Number(await readFile(COUPANG_BROWSER_LOCK_FILE, "utf8"));
+    await access(lockFile);
+    const pid = Number(await readFile(lockFile, "utf8"));
     if (await processIsRunning(pid)) {
       return Response.json({
         success: true,
@@ -41,18 +54,22 @@ export async function POST() {
   }
 
   const script = path.join(process.cwd(), "scripts", "coupang-browser-collector.mjs");
-  const child = spawn(process.execPath, [script, "login"], {
+  const child = spawn(
+    process.execPath,
+    [script, "login", account.id, account.account_type],
+    {
     cwd: process.cwd(),
     detached: true,
     stdio: "ignore",
     windowsHide: false,
-  });
+    }
+  );
   child.unref();
 
   return Response.json({
     success: true,
     message:
-      "쿠팡 로그인 전용 브라우저를 열었습니다. 비밀번호는 이 화면에서 직접 입력해주세요.",
-    status_file: path.relative(process.cwd(), COUPANG_BROWSER_STATUS_FILE),
+      `${account.display_name} 전용 브라우저를 열었습니다. 비밀번호는 쿠팡 화면에서 직접 입력해주세요.`,
+    status_file: path.relative(process.cwd(), statusFile),
   });
 }

@@ -5,7 +5,18 @@ import process from "node:process";
 import { chromium } from "@playwright/test";
 
 const rootDir = process.cwd();
-const localDir = path.join(rootDir, ".yunbiseo-browser", "coupang");
+const accountId = process.argv[3] || "";
+const accountType = process.argv[4] || "";
+const validAccountId =
+  accountId === "legacy-default" ||
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    accountId
+  );
+const baseDir = path.join(rootDir, ".yunbiseo-browser", "coupang");
+const localDir =
+  accountId === "legacy-default"
+    ? baseDir
+    : path.join(baseDir, "accounts", accountId);
 const profileDir = path.join(localDir, "profile");
 const statusFile = path.join(localDir, "status.json");
 const lockFile = path.join(localDir, "collector.lock");
@@ -79,7 +90,11 @@ function isAuthenticated(url) {
 }
 
 async function main() {
-  if (process.argv[2] !== "login") {
+  if (
+    process.argv[2] !== "login" ||
+    !validAccountId ||
+    !["wing_growth", "rocket"].includes(accountType)
+  ) {
     throw new Error("지원하지 않는 실행 모드입니다.");
   }
 
