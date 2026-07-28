@@ -2,7 +2,12 @@
 
 import { ChangeEvent, useState } from "react";
 import { Download, FileSpreadsheet, Upload } from "lucide-react";
+import readXlsxFile from "read-excel-file/browser";
 import { toast } from "sonner";
+import writeXlsxFile, {
+  type Cell,
+  type SheetData,
+} from "write-excel-file/browser";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -95,21 +100,47 @@ const EXAMPLE_ROWS = [
   ],
 ];
 
-function escapeCsv(value: string) {
-  return /[",\r\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
-}
+async function downloadTemplate() {
+  const header = COLUMNS.map(
+    (value): Cell => ({
+      value,
+      type: String,
+      fontWeight: "bold",
+      backgroundColor: "#E8F0FE",
+      align: "center",
+    })
+  );
+  const numberStartIndex = COLUMNS.indexOf("판매가");
+  const rows = EXAMPLE_ROWS.map((row) =>
+    row.map((value, index): Cell => {
+      if (index === 0) {
+        return {
+          value: new Date(`${value}T00:00:00`),
+          type: Date,
+          format: "yyyy-mm-dd",
+        };
+      }
+      if (index >= numberStartIndex) {
+        return { value: Number(value), type: Number, format: "#,##0" };
+      }
+      return { value, type: String };
+    })
+  );
+  const data: SheetData = [header, ...rows];
 
-function downloadTemplate() {
-  const content = [COLUMNS, ...EXAMPLE_ROWS]
-    .map((row) => row.map((value) => escapeCsv(String(value))).join(","))
-    .join("\r\n");
-  const blob = new Blob([`\uFEFF${content}`], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = "쇼핑몰_매출_가져오기_양식.csv";
-  anchor.click();
-  URL.revokeObjectURL(url);
+  await writeXlsxFile(
+    [
+      {
+        sheet: "일괄등록",
+        data,
+        stickyRowsCount: 1,
+        columns: COLUMNS.map((column) => ({
+          width: ["상품명", "스토어명"].includes(column) ? 24 : 15,
+        })),
+      },
+    ],
+    { fontFamily: "Pretendard", fontSize: 10 }
+  ).toFile("쇼핑몰_판매원가재고_일괄등록_양식.xlsx");
 }
 
 function parseCsv(text: string): string[][] {
@@ -146,6 +177,27 @@ function parseCsv(text: string): string[][] {
   row.push(field.trim());
   if (row.some(Boolean)) rows.push(row);
   return rows;
+}
+
+function cellToText(value: unknown) {
+  if (value instanceof Date) {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+  return value === null || value === undefined ? "" : String(value).trim();
+}
+
+async function parseImportFile(file: File) {
+  if (file.name.toLowerCase().endsWith(".csv")) {
+    return parseCsv(await file.text());
+  }
+
+  const sheets = await readXlsxFile(file);
+  const sheet = sheets.find((item) => item.sheet === "일괄등록") ?? sheets[0];
+  if (!sheet) throw new Error("엑셀 파일에 읽을 수 있는 시트가 없습니다.");
+  return sheet.data.map((row) => row.map(cellToText));
 }
 
 function toInteger(value: string, label: string, rowNumber: number) {
@@ -206,13 +258,13 @@ export function CommerceCsvImportDialog({ onComplete }: { onComplete: () => Prom
     if (!selected) return;
 
     try {
-      const rows = validateRows(parseCsv(await selected.text()));
+      const rows = validateRows(await parseImportFile(selected));
       setPreview(rows);
       toast.success(`${rows.length}행을 확인했습니다.`);
     } catch (error) {
       setFile(null);
       event.target.value = "";
-      toast.error(error instanceof Error ? error.message : "CSV 파일을 확인하지 못했습니다.");
+      toast.error(error instanceof Error ? error.message : "Excel 파일을 확인하지 못했습니다.");
     }
   }
 
@@ -361,11 +413,11 @@ export function CommerceCsvImportDialog({ onComplete }: { onComplete: () => Prom
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline"><Upload /> CSV 가져오기</Button>
+        <Button variant="outline"><Upload /> Excel 일괄 업로드</Button>
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>쇼핑몰 매출 CSV 가져오기</DialogTitle>
+          <DialogTitle>판매·원가·재고 Excel 일괄 업로드</DialogTitle>
         </DialogHeader>
         <div className="space-y-5 py-3">
           <div className="rounded-xl border bg-muted/30 p-4 text-sm">
@@ -374,21 +426,22 @@ export function CommerceCsvImportDialog({ onComplete }: { onComplete: () => Prom
               <div>
                 <p className="font-medium">표준 양식을 먼저 내려받으세요.</p>
                 <p className="mt-1 text-muted-foreground">
-                  제목은 바꾸지 말고, 예시 행을 지운 뒤 실제 자료를 입력해 CSV로 저장합니다.
+                  한 행에 일별 판매실적, 상품 원가, 현재 재고를 입력하면 세 항목을 한 번에 반영합니다.
+                  예시 행을 지우고 제목은 그대로 유지해주세요.
                 </p>
               </div>
             </div>
-            <Button type="button" variant="outline" className="mt-3" onClick={downloadTemplate}>
-              <Download /> CSV 양식 다운로드
+            <Button type="button" variant="outline" className="mt-3" onClick={() => void downloadTemplate()}>
+              <Download /> Excel 양식 다운로드
             </Button>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="commerce-csv-file">작성한 CSV 파일</Label>
+            <Label htmlFor="commerce-csv-file">작성한 Excel 또는 CSV 파일</Label>
             <Input
               id="commerce-csv-file"
               type="file"
-              accept=".csv,text/csv"
+              accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
               onChange={handleFile}
               disabled={importing}
             />
