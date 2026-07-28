@@ -23,6 +23,7 @@ import {
   StatCard,
   StatsGrid,
 } from "@/components/page-shell";
+import { CommerceCsvImportDialog } from "@/components/commerce-csv-import-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -448,6 +449,7 @@ export default function CommerceRevenuePage() {
           className="w-44"
         />
         <div className="flex flex-wrap gap-2">
+          <CommerceCsvImportDialog onComplete={loadData} />
           <StoreDialog open={storeDialog} onOpenChange={setStoreDialog} onSubmit={submitStore} saving={saving} />
           <ProductDialog open={productDialog} onOpenChange={setProductDialog} onSubmit={submitProduct} stores={stores} saving={saving} today={today} />
           <SalesDialog open={salesDialog} onOpenChange={setSalesDialog} onSubmit={submitSales} options={options} saving={saving} today={today} />
