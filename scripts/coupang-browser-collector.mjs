@@ -1,4 +1,4 @@
-import { constants } from "node:fs";
+import { constants, existsSync } from "node:fs";
 import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
@@ -10,6 +10,45 @@ const profileDir = path.join(localDir, "profile");
 const statusFile = path.join(localDir, "status.json");
 const lockFile = path.join(localDir, "collector.lock");
 const wingUrl = "https://wing.coupang.com/";
+
+function findChromeExecutable() {
+  const candidates =
+    process.platform === "win32"
+      ? [
+          path.join(
+            process.env.PROGRAMFILES || "C:\\Program Files",
+            "Google",
+            "Chrome",
+            "Application",
+            "chrome.exe"
+          ),
+          path.join(
+            process.env["PROGRAMFILES(X86)"] || "C:\\Program Files (x86)",
+            "Google",
+            "Chrome",
+            "Application",
+            "chrome.exe"
+          ),
+          process.env.LOCALAPPDATA
+            ? path.join(
+                process.env.LOCALAPPDATA,
+                "Google",
+                "Chrome",
+                "Application",
+                "chrome.exe"
+              )
+            : "",
+        ]
+      : process.platform === "darwin"
+        ? ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"]
+        : [
+            "/usr/bin/google-chrome",
+            "/usr/bin/google-chrome-stable",
+            "/opt/google/chrome/chrome",
+          ];
+
+  return candidates.find((candidate) => candidate && existsSync(candidate));
+}
 
 async function writeStatus(status) {
   await mkdir(localDir, { recursive: true });
@@ -63,8 +102,15 @@ async function main() {
   await writeFile(lockFile, String(process.pid), "utf8");
   await writeStatus({ state: "opening", last_error: undefined });
 
+  const executablePath = findChromeExecutable();
+  if (!executablePath) {
+    throw new Error(
+      "이 PC에서 Chrome 실행 파일을 찾지 못했습니다. Chrome을 설치한 뒤 다시 시도해주세요."
+    );
+  }
+
   const context = await chromium.launchPersistentContext(profileDir, {
-    channel: "chrome",
+    executablePath,
     headless: false,
     viewport: null,
     args: ["--start-maximized"],
