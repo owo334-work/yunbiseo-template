@@ -135,6 +135,18 @@ type CollectorBatch = {
   received_at: string;
 };
 
+type PeriodSnapshot = {
+  report_as_of: string;
+  period_from: string;
+  period_to: string;
+  gross_sales: number;
+  total_sales: number;
+  cancel_amount: number;
+  sale_quantity: number;
+  cancel_quantity: number;
+  commerce_stores?: { store_name: string } | null;
+};
+
 const channelLabel: Record<string, string> = {
   coupang: "쿠팡",
   naver: "네이버",
@@ -160,6 +172,7 @@ export default function CommerceRevenuePage() {
   const [adCosts, setAdCosts] = useState<AdCost[]>([]);
   const [forecasts, setForecasts] = useState<StockForecast[]>([]);
   const [collectorBatches, setCollectorBatches] = useState<CollectorBatch[]>([]);
+  const [periodSnapshots, setPeriodSnapshots] = useState<PeriodSnapshot[]>([]);
   const [storeDialog, setStoreDialog] = useState(false);
   const [productDialog, setProductDialog] = useState(false);
   const [salesDialog, setSalesDialog] = useState(false);
@@ -172,7 +185,7 @@ export default function CommerceRevenuePage() {
     const end = new Date(Number(selectedMonth.slice(0, 4)), Number(selectedMonth.slice(5, 7)), 0);
     const endDate = dateKey(end);
 
-    const [storeResult, optionResult, metricResult, adResult, forecastResult, batchResult] =
+    const [storeResult, optionResult, metricResult, adResult, forecastResult, batchResult, periodResult] =
       await Promise.all([
         supabase.from("commerce_stores").select("id, channel, store_name").order("store_name"),
         supabase
@@ -200,6 +213,14 @@ export default function CommerceRevenuePage() {
           .select("id, device_name, account_name, account_type, data_types, records_processed, status, error_message, received_at")
           .order("received_at", { ascending: false })
           .limit(10),
+        supabase
+          .from("commerce_sales_period_snapshots")
+          .select(
+            "report_as_of, period_from, period_to, gross_sales, total_sales, cancel_amount, sale_quantity, cancel_quantity, commerce_stores(store_name)"
+          )
+          .eq("period_kind", "recent_30_days")
+          .order("report_as_of", { ascending: false })
+          .limit(1000),
       ]);
 
     const error =
@@ -208,7 +229,8 @@ export default function CommerceRevenuePage() {
       metricResult.error ||
       adResult.error ||
       forecastResult.error ||
-      batchResult.error;
+      batchResult.error ||
+      periodResult.error;
 
     if (error) {
       toast.error(`쇼핑몰 데이터를 불러오지 못했습니다: ${error.message}`);
@@ -219,6 +241,7 @@ export default function CommerceRevenuePage() {
       setAdCosts((adResult.data ?? []) as AdCost[]);
       setForecasts((forecastResult.data ?? []) as StockForecast[]);
       setCollectorBatches((batchResult.data ?? []) as CollectorBatch[]);
+      setPeriodSnapshots((periodResult.data ?? []) as unknown as PeriodSnapshot[]);
     }
     setLoading(false);
   }, [selectedMonth, supabase]);
@@ -446,6 +469,50 @@ export default function CommerceRevenuePage() {
   }
 
   const today = dateKey(new Date());
+  const recent30Rows = useMemo(() => {
+    const latestByStore = new Map<
+      string,
+      {
+        storeName: string;
+        reportAsOf: string;
+        periodFrom: string;
+        periodTo: string;
+        grossSales: number;
+        totalSales: number;
+        cancelAmount: number;
+        saleQuantity: number;
+        cancelQuantity: number;
+      }
+    >();
+    for (const row of periodSnapshots) {
+      const storeName = row.commerce_stores?.store_name ?? "쿠팡";
+      const current = latestByStore.get(storeName);
+      if (current && current.reportAsOf > row.report_as_of) continue;
+      if (!current || current.reportAsOf < row.report_as_of) {
+        latestByStore.set(storeName, {
+          storeName,
+          reportAsOf: row.report_as_of,
+          periodFrom: row.period_from,
+          periodTo: row.period_to,
+          grossSales: 0,
+          totalSales: 0,
+          cancelAmount: 0,
+          saleQuantity: 0,
+          cancelQuantity: 0,
+        });
+      }
+      const target = latestByStore.get(storeName);
+      if (!target || target.reportAsOf !== row.report_as_of) continue;
+      target.grossSales += row.gross_sales;
+      target.totalSales += row.total_sales;
+      target.cancelAmount += row.cancel_amount;
+      target.saleQuantity += row.sale_quantity;
+      target.cancelQuantity += row.cancel_quantity;
+    }
+    return [...latestByStore.values()].sort((a, b) =>
+      a.storeName.localeCompare(b.storeName, "ko")
+    );
+  }, [periodSnapshots]);
 
   return (
     <PageShell>
@@ -525,6 +592,60 @@ export default function CommerceRevenuePage() {
                             {batch.error_message ? (
                               <p className="mt-1 max-w-72 text-xs text-red-600">{batch.error_message}</p>
                             ) : null}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="size-5" /> 쿠팡 최근 30일 요약
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {recent30Rows.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  아직 PC에서 전송된 최근 30일 판매분석 자료가 없습니다.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>계정</TableHead>
+                        <TableHead>조회기간</TableHead>
+                        <TableHead className="text-right">판매량</TableHead>
+                        <TableHead className="text-right">취소수량</TableHead>
+                        <TableHead className="text-right">취소 전 매출</TableHead>
+                        <TableHead className="text-right">취소금액</TableHead>
+                        <TableHead className="text-right">반영 매출</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {recent30Rows.map((row) => (
+                        <TableRow key={`${row.storeName}-${row.reportAsOf}`}>
+                          <TableCell className="font-medium">{row.storeName}</TableCell>
+                          <TableCell>
+                            {row.periodFrom} ~ {row.periodTo}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {row.saleQuantity.toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {row.cancelQuantity.toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-right">{won(row.totalSales)}</TableCell>
+                          <TableCell className="text-right text-red-600">
+                            -{won(row.cancelAmount)}
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            {won(row.grossSales)}
                           </TableCell>
                         </TableRow>
                       ))}

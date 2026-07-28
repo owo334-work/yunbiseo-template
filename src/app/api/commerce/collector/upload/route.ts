@@ -39,6 +39,15 @@ type InventoryRow = {
   reserved_quantity?: unknown;
 };
 
+type PeriodSalesRow = SalesRow & {
+  report_as_of?: unknown;
+  period_from?: unknown;
+  period_to?: unknown;
+  period_kind?: unknown;
+  total_sales?: unknown;
+  cancel_amount?: unknown;
+};
+
 function text(value: unknown, maxLength = 200) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }
@@ -75,8 +84,10 @@ async function resolveCommerceOption(
   const optionId = text(row.option_id, 100);
   if (!optionId) throw new Error("옵션 ID가 비어 있습니다.");
 
-  const productName = text(row.product_name) || `쿠팡 상품 ${optionId}`;
-  const optionName = text(row.option_name) || "기본";
+  const suppliedProductName = text(row.product_name);
+  const suppliedOptionName = text(row.option_name);
+  const productName = suppliedProductName || `쿠팡 상품 ${optionId}`;
+  const optionName = suppliedOptionName || "기본";
   const sku = text(row.sku, 100) || `CP-${optionId}`;
 
   const { data: existingOption, error: findError } = await admin
@@ -88,18 +99,27 @@ async function resolveCommerceOption(
   if (findError) throw new Error(findError.message);
 
   if (existingOption) {
-    await admin
+    const productUpdate = suppliedProductName
+      ? { product_name: suppliedProductName, is_active: true }
+      : { is_active: true };
+    const { error: productUpdateError } = await admin
       .from("commerce_products")
-      .update({ product_name: productName, is_active: true })
+      .update(productUpdate)
       .eq("id", existingOption.product_id);
+    if (productUpdateError) throw new Error(productUpdateError.message);
+
+    const optionUpdate: Record<string, unknown> = {
+      is_active: true,
+    };
+    if (suppliedOptionName) optionUpdate.option_name = suppliedOptionName;
+    const sellerProductId = text(row.seller_product_id, 100);
+    if (sellerProductId) optionUpdate.seller_product_id = sellerProductId;
+    if ((row as InventoryRow).sale_price !== undefined) {
+      optionUpdate.sale_price = Math.max(0, integer((row as InventoryRow).sale_price));
+    }
     const { error } = await admin
       .from("commerce_product_options")
-      .update({
-        option_name: optionName,
-        seller_product_id: text(row.seller_product_id, 100) || null,
-        sale_price: Math.max(0, integer((row as InventoryRow).sale_price)),
-        is_active: true,
-      })
+      .update(optionUpdate)
       .eq("id", existingOption.id);
     if (error) throw new Error(error.message);
     return { productId: existingOption.product_id, optionId: existingOption.id };
@@ -156,6 +176,9 @@ export async function POST(request: NextRequest) {
   const inventory = Array.isArray(payload.inventory)
     ? (payload.inventory as InventoryRow[])
     : [];
+  const periodSales = Array.isArray(payload.period_sales)
+    ? (payload.period_sales as PeriodSalesRow[])
+    : [];
 
   if (!deviceName || !accountKey || !accountName || !validAccountType(accountType)) {
     return Response.json(
@@ -163,10 +186,13 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   }
-  if (sales.length + inventory.length === 0) {
-    return Response.json({ error: "전송할 판매 또는 재고 데이터가 없습니다." }, { status: 400 });
+  if (sales.length + inventory.length + periodSales.length === 0) {
+    return Response.json(
+      { error: "전송할 판매·재고·기간 요약 데이터가 없습니다." },
+      { status: 400 }
+    );
   }
-  if (sales.length + inventory.length > 5_000) {
+  if (sales.length + inventory.length + periodSales.length > 5_000) {
     return Response.json({ error: "한 번에 최대 5,000행까지 전송할 수 있습니다." }, { status: 413 });
   }
   if (sales.some((row) => !validDate(row.sales_date))) {
@@ -181,10 +207,25 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   }
+  if (
+    periodSales.some(
+      (row) =>
+        !validDate(row.report_as_of) ||
+        !validDate(row.period_from) ||
+        !validDate(row.period_to) ||
+        row.period_kind !== "recent_30_days"
+    )
+  ) {
+    return Response.json(
+      { error: "최근 30일 자료의 기준일·시작일·종료일 형식이 올바르지 않습니다." },
+      { status: 400 }
+    );
+  }
 
   const dates = [
     ...sales.map((row) => String(row.sales_date)),
     ...inventory.map((row) => String(row.snapshot_date)),
+    ...periodSales.flatMap((row) => [String(row.period_from), String(row.period_to)]),
   ].sort();
   const key = batchKey(payload);
   const admin = createAdminClient();
@@ -206,6 +247,7 @@ export async function POST(request: NextRequest) {
   const dataTypes = [
     ...(sales.length ? ["sales"] : []),
     ...(inventory.length ? ["inventory"] : []),
+    ...(periodSales.length ? ["recent_30_days"] : []),
   ];
   const { data: batch, error: batchError } = await admin
     .from("commerce_collector_batches")
@@ -219,7 +261,7 @@ export async function POST(request: NextRequest) {
         data_types: dataTypes,
         period_from: dates[0],
         period_to: dates.at(-1),
-        records_received: sales.length + inventory.length,
+        records_received: sales.length + inventory.length + periodSales.length,
         records_processed: 0,
         status: "processing",
         error_message: null,
@@ -235,19 +277,32 @@ export async function POST(request: NextRequest) {
 
   let processed = 0;
   try {
-    const { data: store, error: storeError } = await admin
+    const { data: existingStore, error: findStoreError } = await admin
       .from("commerce_stores")
-      .upsert(
-        {
-          channel: "coupang",
-          store_name: accountName,
-          seller_id: accountKey,
-          is_active: true,
-        },
-        { onConflict: "channel,store_name" }
-      )
       .select("id")
-      .single();
+      .eq("channel", "coupang")
+      .eq("store_name", accountName)
+      .maybeSingle();
+    if (findStoreError) throw new Error(findStoreError.message);
+
+    const storeResult = existingStore
+      ? await admin
+          .from("commerce_stores")
+          .update({ is_active: true })
+          .eq("id", existingStore.id)
+          .select("id")
+          .single()
+      : await admin
+          .from("commerce_stores")
+          .insert({
+            channel: "coupang",
+            store_name: accountName,
+            seller_id: accountKey,
+            is_active: true,
+          })
+          .select("id")
+          .single();
+    const { data: store, error: storeError } = storeResult;
     if (storeError || !store) {
       throw new Error(storeError?.message || "스토어 저장 실패");
     }
@@ -273,6 +328,36 @@ export async function POST(request: NextRequest) {
         },
         { onConflict: "sales_date,store_id,product_id,product_option_id" }
       );
+      if (error) throw new Error(error.message);
+      processed += 1;
+    }
+
+    for (const row of periodSales) {
+      const ids = await resolveCommerceOption(admin, store.id, row);
+      const { error } = await admin
+        .from("commerce_sales_period_snapshots")
+        .upsert(
+          {
+            report_as_of: row.report_as_of,
+            period_from: row.period_from,
+            period_to: row.period_to,
+            period_kind: "recent_30_days",
+            store_id: store.id,
+            product_id: ids.productId,
+            product_option_id: ids.optionId,
+            order_quantity: Math.max(0, integer(row.order_quantity)),
+            sale_quantity: Math.max(0, integer(row.sale_quantity)),
+            cancel_quantity: Math.max(0, integer(row.cancel_quantity)),
+            gross_sales: integer(row.gross_sales),
+            total_sales: integer(row.total_sales),
+            cancel_amount: Math.max(0, integer(row.cancel_amount)),
+            source: "api",
+            collected_at: new Date().toISOString(),
+          },
+          {
+            onConflict: "report_as_of,period_kind,store_id,product_option_id",
+          }
+        );
       if (error) throw new Error(error.message);
       processed += 1;
     }
@@ -309,7 +394,9 @@ export async function POST(request: NextRequest) {
       success: true,
       duplicate: false,
       processed,
-      message: `${accountName} 판매 ${sales.length}행, 재고 ${inventory.length}행을 반영했습니다.`,
+      message:
+        `${accountName} 하루 판매 ${sales.length}행, 최근 30일 ${periodSales.length}행, ` +
+        `재고 ${inventory.length}행을 반영했습니다.`,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "수집 데이터 처리 실패";
