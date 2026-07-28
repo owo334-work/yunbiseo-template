@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   Boxes,
   CircleDollarSign,
+  CloudUpload,
   DollarSign,
   PackagePlus,
   RefreshCw,
@@ -122,6 +123,18 @@ type StockForecast = {
   status: "out_of_stock" | "no_sales" | "critical" | "warning" | "normal";
 };
 
+type CollectorBatch = {
+  id: string;
+  device_name: string;
+  account_name: string;
+  account_type: "wing_growth" | "rocket";
+  data_types: string[];
+  records_processed: number;
+  status: "received" | "processing" | "success" | "failed" | "partial";
+  error_message: string | null;
+  received_at: string;
+};
+
 const channelLabel: Record<string, string> = {
   coupang: "쿠팡",
   naver: "네이버",
@@ -146,6 +159,7 @@ export default function CommerceRevenuePage() {
   const [metrics, setMetrics] = useState<DailyMetric[]>([]);
   const [adCosts, setAdCosts] = useState<AdCost[]>([]);
   const [forecasts, setForecasts] = useState<StockForecast[]>([]);
+  const [collectorBatches, setCollectorBatches] = useState<CollectorBatch[]>([]);
   const [storeDialog, setStoreDialog] = useState(false);
   const [productDialog, setProductDialog] = useState(false);
   const [salesDialog, setSalesDialog] = useState(false);
@@ -158,7 +172,7 @@ export default function CommerceRevenuePage() {
     const end = new Date(Number(selectedMonth.slice(0, 4)), Number(selectedMonth.slice(5, 7)), 0);
     const endDate = dateKey(end);
 
-    const [storeResult, optionResult, metricResult, adResult, forecastResult] =
+    const [storeResult, optionResult, metricResult, adResult, forecastResult, batchResult] =
       await Promise.all([
         supabase.from("commerce_stores").select("id, channel, store_name").order("store_name"),
         supabase
@@ -181,6 +195,11 @@ export default function CommerceRevenuePage() {
           .from("commerce_stockout_forecasts")
           .select("*")
           .order("days_until_stockout", { ascending: true, nullsFirst: false }),
+        supabase
+          .from("commerce_collector_batches")
+          .select("id, device_name, account_name, account_type, data_types, records_processed, status, error_message, received_at")
+          .order("received_at", { ascending: false })
+          .limit(10),
       ]);
 
     const error =
@@ -188,7 +207,8 @@ export default function CommerceRevenuePage() {
       optionResult.error ||
       metricResult.error ||
       adResult.error ||
-      forecastResult.error;
+      forecastResult.error ||
+      batchResult.error;
 
     if (error) {
       toast.error(`쇼핑몰 데이터를 불러오지 못했습니다: ${error.message}`);
@@ -198,6 +218,7 @@ export default function CommerceRevenuePage() {
       setMetrics((metricResult.data ?? []) as DailyMetric[]);
       setAdCosts((adResult.data ?? []) as AdCost[]);
       setForecasts((forecastResult.data ?? []) as StockForecast[]);
+      setCollectorBatches((batchResult.data ?? []) as CollectorBatch[]);
     }
     setLoading(false);
   }, [selectedMonth, supabase]);
@@ -465,6 +486,55 @@ export default function CommerceRevenuePage() {
         <LoadingState />
       ) : (
         <div className="space-y-5">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CloudUpload className="size-5" /> PC 쿠팡 수집 현황
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {collectorBatches.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  아직 PC에서 Vercel 윤비서로 전송된 수집 기록이 없습니다.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>수집 시각</TableHead>
+                        <TableHead>계정</TableHead>
+                        <TableHead>PC</TableHead>
+                        <TableHead>자료</TableHead>
+                        <TableHead className="text-right">반영</TableHead>
+                        <TableHead>상태</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {collectorBatches.map((batch) => (
+                        <TableRow key={batch.id}>
+                          <TableCell>{new Date(batch.received_at).toLocaleString("ko-KR")}</TableCell>
+                          <TableCell>{batch.account_name}</TableCell>
+                          <TableCell>{batch.device_name}</TableCell>
+                          <TableCell>{batch.data_types.join(", ")}</TableCell>
+                          <TableCell className="text-right">{batch.records_processed.toLocaleString()}행</TableCell>
+                          <TableCell>
+                            <Badge variant={batch.status === "success" ? "secondary" : "destructive"}>
+                              {batch.status === "success" ? "성공" : batch.status === "partial" ? "일부 실패" : "실패"}
+                            </Badge>
+                            {batch.error_message ? (
+                              <p className="mt-1 max-w-72 text-xs text-red-600">{batch.error_message}</p>
+                            ) : null}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <section className="space-y-5" aria-labelledby="commerce-profit-heading">
             <div>
               <h2 id="commerce-profit-heading" className="text-xl font-semibold tracking-tight">
