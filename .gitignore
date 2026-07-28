@@ -57,6 +57,9 @@ supabase/.branches
 /public/screenshots/
 /data/newsletter/
 
+# 로컬 쇼핑몰 브라우저 연결 정보 (로그인 쿠키/세션이 포함될 수 있어 커밋 금지)
+/.yunbiseo-browser/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

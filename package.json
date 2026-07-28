@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "setup:admin": "node scripts/create-admin.mjs"
+    "setup:admin": "node scripts/create-admin.mjs",
+    "coupang:login": "node scripts/coupang-browser-collector.mjs login"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",

@@ -24,6 +24,7 @@ import {
   StatsGrid,
 } from "@/components/page-shell";
 import { CommerceCsvImportDialog } from "@/components/commerce-csv-import-dialog";
+import { CoupangBrowserIntegrationDialog } from "@/components/coupang-browser-integration-dialog";
 import { CoupangIntegrationDialog } from "@/components/coupang-integration-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -450,6 +451,7 @@ export default function CommerceRevenuePage() {
           className="w-44"
         />
         <div className="flex flex-wrap gap-2">
+          <CoupangBrowserIntegrationDialog />
           <CoupangIntegrationDialog onSynced={loadData} />
           <CommerceCsvImportDialog onComplete={loadData} />
           <StoreDialog open={storeDialog} onOpenChange={setStoreDialog} onSubmit={submitStore} saving={saving} />
