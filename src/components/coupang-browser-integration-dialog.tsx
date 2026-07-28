@@ -5,9 +5,11 @@ import {
   CheckCircle2,
   ExternalLink,
   Laptop,
+  Pencil,
   Plus,
   RefreshCw,
   ShieldCheck,
+  Trash2,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -64,6 +66,8 @@ export function CoupangBrowserIntegrationDialog() {
   const [creating, setCreating] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [launchingId, setLaunchingId] = useState<string | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
 
   const loadAccounts = useCallback(async () => {
@@ -148,6 +152,62 @@ export function CoupangBrowserIntegrationDialog() {
       );
     } finally {
       setLaunchingId(null);
+    }
+  }
+
+  async function updateAccount(
+    accountId: string,
+    displayName: string,
+    accountType: AccountType
+  ) {
+    setSavingId(accountId);
+    try {
+      await responseJson(
+        await fetch(`/api/commerce/coupang/browser/accounts/${accountId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            display_name: displayName,
+            account_type: accountType,
+          }),
+        })
+      );
+      toast.success("쿠팡 계정 정보를 수정했습니다.");
+      await loadAccounts();
+      return true;
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "계정 정보를 수정하지 못했습니다."
+      );
+      return false;
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function deleteAccount(account: Account) {
+    const confirmed = window.confirm(
+      `'${account.display_name}' 로그인 연결을 삭제할까요?\n\n` +
+        "이 PC에 저장된 해당 계정의 로그인 상태는 삭제되지만, " +
+        "기존 매출·상품·재고 데이터는 유지됩니다."
+    );
+    if (!confirmed) return;
+
+    setDeletingId(account.id);
+    try {
+      const payload = await responseJson(
+        await fetch(`/api/commerce/coupang/browser/accounts/${account.id}`, {
+          method: "DELETE",
+        })
+      );
+      toast.success(payload.message);
+      await loadAccounts();
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "로그인 연결을 삭제하지 못했습니다."
+      );
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -240,7 +300,13 @@ export function CoupangBrowserIntegrationDialog() {
                   key={account.id}
                   account={account}
                   launching={launchingId === account.id}
+                  saving={savingId === account.id}
+                  deleting={deletingId === account.id}
                   onLaunch={() => launch(account.id)}
+                  onSave={(displayName, accountType) =>
+                    updateAccount(account.id, displayName, accountType)
+                  }
+                  onDelete={() => deleteAccount(account)}
                 />
               ))
             )}
@@ -258,13 +324,77 @@ export function CoupangBrowserIntegrationDialog() {
 function AccountCard({
   account,
   launching,
+  saving,
+  deleting,
   onLaunch,
+  onSave,
+  onDelete,
 }: {
   account: Account;
   launching: boolean;
+  saving: boolean;
+  deleting: boolean;
   onLaunch: () => void;
+  onSave: (displayName: string, accountType: AccountType) => Promise<boolean>;
+  onDelete: () => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [displayName, setDisplayName] = useState(account.display_name);
+  const [accountType, setAccountType] = useState<AccountType>(account.account_type);
   const connected = account.status.state === "connected";
+
+  async function save() {
+    if (await onSave(displayName.trim(), accountType)) setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <div className="space-y-4 rounded-xl border p-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor={`coupang-edit-name-${account.id}`}>스토어 구분명</Label>
+            <Input
+              id={`coupang-edit-name-${account.id}`}
+              value={displayName}
+              onChange={(event) => setDisplayName(event.target.value)}
+              maxLength={50}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>계정 유형</Label>
+            <Select
+              value={accountType}
+              onValueChange={(value) => setAccountType(value as AccountType)}
+            >
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="wing_growth">쿠팡 판매자 Wing · 로켓그로스</SelectItem>
+                <SelectItem value="rocket">쿠팡로켓</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setDisplayName(account.display_name);
+              setAccountType(account.account_type);
+              setEditing(false);
+            }}
+            disabled={saving}
+          >
+            취소
+          </Button>
+          <Button type="button" onClick={save} disabled={saving || !displayName.trim()}>
+            {saving ? "저장 중..." : "수정 저장"}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0 space-y-1">
@@ -296,19 +426,38 @@ function AccountCard({
           <p className="text-xs text-red-600">{account.status.last_error}</p>
         ) : null}
       </div>
-      <Button
-        type="button"
-        variant={connected ? "outline" : "default"}
-        onClick={onLaunch}
-        disabled={launching || account.status.state === "opening"}
-      >
-        <ExternalLink />
-        {launching
-          ? "여는 중..."
-          : connected
-            ? "이 계정 다시 로그인"
-            : "이 계정 로그인"}
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setEditing(true)}
+          disabled={deleting || account.status.state === "opening"}
+        >
+          <Pencil /> 수정
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="text-red-600 hover:text-red-700"
+          onClick={onDelete}
+          disabled={deleting || account.status.state === "opening"}
+        >
+          <Trash2 /> {deleting ? "삭제 중..." : "연결 삭제"}
+        </Button>
+        <Button
+          type="button"
+          variant={connected ? "outline" : "default"}
+          onClick={onLaunch}
+          disabled={launching || deleting || account.status.state === "opening"}
+        >
+          <ExternalLink />
+          {launching
+            ? "여는 중..."
+            : connected
+              ? "이 계정 다시 로그인"
+              : "이 계정 로그인"}
+        </Button>
+      </div>
     </div>
   );
 }
