@@ -64,6 +64,7 @@ async function main() {
   await writeStatus({ state: "opening", last_error: undefined });
 
   const context = await chromium.launchPersistentContext(profileDir, {
+    channel: "chrome",
     headless: false,
     viewport: null,
     args: ["--start-maximized"],
@@ -108,10 +109,14 @@ async function main() {
 
 main()
   .catch(async (error) => {
+    const originalMessage =
+      error instanceof Error ? error.message : "쿠팡 로그인 브라우저 실행 실패";
+    const message = originalMessage.includes("Executable doesn't exist")
+      ? "이 PC에서 Chrome 실행 파일을 찾지 못했습니다. Chrome을 설치한 뒤 다시 시도해주세요."
+      : originalMessage;
     await writeStatus({
       state: "error",
-      last_error:
-        error instanceof Error ? error.message : "쿠팡 로그인 브라우저 실행 실패",
+      last_error: message,
     }).catch(() => undefined);
     process.exitCode = 1;
   })
